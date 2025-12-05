@@ -11,6 +11,7 @@ class InvestorType(str, Enum):
 
 class InvestorBase(BaseModel):
     name: str
+    organization_id: str
     investor_type: InvestorType = InvestorType.FUND
     country_code: str = "SE"
     description: Optional[str] = None
@@ -18,6 +19,7 @@ class InvestorBase(BaseModel):
 
 class InvestorCreate(BaseModel):
     name: str
+    organization_id: str
     investor_type: InvestorType = InvestorType.FUND
 
 
@@ -29,6 +31,7 @@ class InvestorOut(InvestorBase):
 
 class InvestorPortfolio(BaseModel):
     """GET /investors/{id}/portfolio"""
+
     investor_id: str
     name: str
     holdings: list["HoldingOut"]
