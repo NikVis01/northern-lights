@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from uuid import uuid4
 
-from app.models import (
+from src.app.models import (
     CompanyCreate,
     CompanyOut,
     CompanySearch,
     CompanySearchResult,
     CompanyLeads,
 )
-from app.dependencies import SettingsDep, ApiKeyDep
+from src.app.dependencies import SettingsDep, ApiKeyDep
 
 router = APIRouter()
 
@@ -85,10 +85,8 @@ async def search_companies(body: CompanySearch, api_key: ApiKeyDep):
     for c in MOCK_COMPANIES.values():
         if body.sectors and not any(s in c.sectors for s in body.sectors):
             continue
-        results.append(
-            CompanySearchResult(**c.model_dump(), score=0.85)
-        )
-    return results[:body.limit]
+        results.append(CompanySearchResult(**c.model_dump(), score=0.85))
+    return results[: body.limit]
 
 
 @router.get("/{organization_id}/leads", response_model=CompanyLeads)
@@ -96,11 +94,12 @@ async def get_leads(organization_id: str, api_key: ApiKeyDep):
     """Get companies in same Leiden cluster (competitive leads)."""
     if organization_id not in MOCK_COMPANIES:
         raise HTTPException(404, f"Company {organization_id} not found")
-    
+
     company = MOCK_COMPANIES[organization_id]
     # Mock: return companies with same cluster_id
     leads = [
-        c for c in MOCK_COMPANIES.values()
+        c
+        for c in MOCK_COMPANIES.values()
         if c.cluster_id == company.cluster_id and c.organization_id != organization_id
     ]
     return CompanyLeads(

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.models import (
+from src.app.models import (
     RelationshipCreate,
     RelationshipOut,
     NetworkGraph,
@@ -8,7 +8,7 @@ from app.models import (
     NetworkEdge,
     RelationType,
 )
-from app.dependencies import ApiKeyDep
+from src.app.dependencies import ApiKeyDep
 
 router = APIRouter()
 
@@ -47,7 +47,7 @@ async def get_network(entity_id: str, depth: int = 2, api_key: ApiKeyDep = None)
                 ),
             ],
         )
-    
+
     # Default empty graph
     return NetworkGraph(
         root_id=entity_id,

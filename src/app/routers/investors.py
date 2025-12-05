@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
-from app.models import InvestorOut, InvestorCreate, InvestorPortfolio, HoldingOut, InvestorType
-from app.dependencies import ApiKeyDep
+from src.app.models import InvestorOut, InvestorCreate, InvestorPortfolio, HoldingOut, InvestorType
+from src.app.dependencies import ApiKeyDep
 
 router = APIRouter()
 
@@ -50,7 +50,7 @@ async def get_portfolio(investor_id: str, api_key: ApiKeyDep):
     """Get investor's portfolio holdings."""
     if investor_id not in MOCK_INVESTORS:
         raise HTTPException(404, f"Investor {investor_id} not found")
-    
+
     investor = MOCK_INVESTORS[investor_id]
     holdings = MOCK_HOLDINGS.get(investor_id, [])
     return InvestorPortfolio(
