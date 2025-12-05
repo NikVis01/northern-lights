@@ -1,0 +1,375 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap");
+
+@layer base {
+  :root {
+    --background: 222 47% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 222 47% 7%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 222 47% 7%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 222 47% 4%;
+
+    --secondary: 222 30% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 222 30% 15%;
+    --muted-foreground: 220 15% 55%;
+
+    --accent: 222 40% 18%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 222 30% 18%;
+    --input: 222 30% 18%;
+    --ring: 220 20% 40%;
+
+    --radius: 0.5rem;
+
+    /* Northern Lights AI specific tokens */
+    --grid-color: 222 30% 20%;
+    --glow: 0 0% 100%;
+    --surface-elevated: 222 40% 8%;
+
+    /* Navy gradient colors */
+    --navy-deep: 222 47% 4%;
+    --navy-mid: 225 45% 8%;
+    --navy-light: 228 40% 12%;
+
+    /* Hub Graph colors */
+    --graph-node-company: 220 15% 30%;
+    --graph-node-fund: 220 15% 55%;
+    --graph-link: 220 15% 80%;
+    --graph-glow: 220 15% 60%;
+
+    --glass-gradient: linear-gradient(
+      180deg,
+      hsl(0 0% 100%) 0%,
+      hsl(220 15% 98%) 100%
+    );
+    --shadow-card: 0 4px 24px hsl(220 20% 80% / 0.3);
+    --shadow-elevated: 0 8px 32px hsl(220 20% 80% / 0.4);
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 220 20% 10%;
+    --sidebar-primary: 220 20% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 220 15% 94%;
+    --sidebar-accent-foreground: 220 20% 10%;
+    --sidebar-border: 220 15% 88%;
+    --sidebar-ring: 220 20% 10%;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 98%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 222 47% 11%;
+    --grid-color: 220 13% 85%;
+    --glow: 222 47% 11%;
+    --surface-elevated: 0 0% 100%;
+    --navy-deep: 220 14% 96%;
+    --navy-mid: 220 13% 91%;
+    --navy-light: 220 9% 85%;
+
+    /* Graph colors - light */
+    --graph-node-company: 220 15% 30%;
+    --graph-node-fund: 220 15% 55%;
+    --graph-link: 220 15% 80%;
+    --graph-glow: 220 15% 60%;
+  }
+
+  .dark {
+    --background: 222 47% 4%;
+    --foreground: 0 0% 98%;
+    --card: 222 47% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 222 47% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 222 47% 4%;
+    --secondary: 222 30% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 222 30% 15%;
+    --muted-foreground: 220 15% 55%;
+    --accent: 222 40% 18%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 30% 18%;
+    --input: 222 30% 18%;
+    --ring: 220 20% 40%;
+    --grid-color: 222 30% 20%;
+    --glow: 0 0% 100%;
+    --surface-elevated: 222 40% 8%;
+    --navy-deep: 222 47% 4%;
+    --navy-mid: 225 45% 8%;
+    --navy-light: 228 40% 12%;
+
+    /* Graph colors - dark */
+    --graph-node-company: 220 15% 70%;
+    --graph-node-fund: 220 15% 50%;
+    --graph-link: 220 15% 25%;
+    --graph-glow: 220 15% 40%;
+
+    --glass-gradient: linear-gradient(
+      180deg,
+      hsl(220 15% 8%) 0%,
+      hsl(220 15% 6%) 100%
+    );
+    --shadow-card: 0 4px 24px hsl(220 20% 2% / 0.8);
+    --shadow-elevated: 0 8px 32px hsl(220 20% 2% / 0.9);
+
+    /* Sidebar */
+    --sidebar-background: 220 20% 5%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 220 15% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 220 15% 15%;
+    --sidebar-ring: 0 0% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Space Grotesk", system-ui, sans-serif;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: "JetBrains Mono", monospace;
+  }
+}
+
+/* Navy gradient background */
+.navy-gradient {
+  background: radial-gradient(
+      ellipse 80% 50% at 50% -20%,
+      hsl(var(--navy-light)) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 60% 40% at 80% 50%,
+      hsl(225 50% 10%) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 50% 50% at 20% 80%,
+      hsl(230 45% 8%) 0%,
+      transparent 50%
+    ),
+    linear-gradient(
+      180deg,
+      hsl(var(--navy-mid)) 0%,
+      hsl(var(--navy-deep)) 50%,
+      hsl(220 50% 2%) 100%
+    );
+}
+
+/* Grain overlay effect */
+@keyframes grain {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-5%, -10%);
+  }
+  20% {
+    transform: translate(-15%, 5%);
+  }
+  30% {
+    transform: translate(7%, -25%);
+  }
+  40% {
+    transform: translate(-5%, 25%);
+  }
+  50% {
+    transform: translate(-15%, 10%);
+  }
+  60% {
+    transform: translate(15%, 0%);
+  }
+  70% {
+    transform: translate(0%, 15%);
+  }
+  80% {
+    transform: translate(3%, 35%);
+  }
+  90% {
+    transform: translate(-10%, 10%);
+  }
+}
+
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  animation: grain 8s steps(10) infinite;
+}
+
+/* Grid pattern */
+.grid-pattern {
+  background-image: linear-gradient(
+      to right,
+      hsl(var(--grid-color) / 0.25) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      hsl(var(--grid-color) / 0.25) 1px,
+      transparent 1px
+    );
+  background-size: 60px 60px;
+}
+
+/* Subtle glow effect */
+.text-glow {
+  text-shadow: 0 0 80px hsl(var(--glow) / 0.08);
+}
+
+/* Animated border */
+@keyframes border-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.border-animated {
+  animation: border-pulse 3s ease-in-out infinite;
+}
+
+/* Fade in animation */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.8s ease-out forwards;
+}
+
+.animate-delay-100 {
+  animation-delay: 0.1s;
+}
+.animate-delay-200 {
+  animation-delay: 0.2s;
+}
+.animate-delay-300 {
+  animation-delay: 0.3s;
+}
+.animate-delay-400 {
+  animation-delay: 0.4s;
+}
+.animate-delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* Glow ring for graph */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+}
+
+.pulse-ring {
+  animation: pulse-ring 4s ease-in-out infinite;
+}
+
+@layer components {
+  .glass-card {
+    background: var(--glass-gradient);
+    @apply border border-border/60;
+    box-shadow: var(--shadow-card);
+  }
+
+  .mono {
+    @apply font-mono text-xs tracking-wider uppercase text-muted-foreground;
+  }
+
+  .fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .slide-up {
+    animation: slideUp 0.4s ease-out forwards;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
