@@ -1,0 +1,140 @@
+# Northern Lights Prompt Registry
+# Maps CompanyBase fields to the prompts used to extract/structure them
+
+prompts:
+  structure_data:
+    file: structure_data.xml
+    description: "Unified prompt that structures data from both Bolagsverket and web search sources"
+    sources:
+      - bolagsverket: "Official Swedish company registry"
+      - web_search: "Company websites, Wikipedia, news articles, LinkedIn, industry databases"
+    fields:
+      # Core Identity
+      - name: name
+        required: true
+        type: str
+        source: bolagsverket
+      - name: organization_id
+        required: true
+        type: str
+        source: bolagsverket
+        note: "10-digit Swedish organization number (orgnummer)"
+      - name: aliases
+        required: false
+        type: list[str]
+        source: web_search
+      - name: country_code
+        required: true
+        type: str
+        default: "SE"
+        source: bolagsverket
+      
+      # Basic Information
+      - name: year_founded
+        required: false
+        type: str
+        source: bolagsverket
+      - name: sectors
+        required: false
+        type: list[str]
+        source: web_search
+      - name: description
+        required: false
+        type: str
+        source: web_search
+        note: "2-3 sentence executive summary"
+      - name: mission
+        required: false
+        type: str
+        source: web_search
+      - name: website
+        required: false
+        type: str
+        source: web_search
+      
+      # Quantitative Data
+      - name: num_employees
+        required: false
+        type: int
+        source: web_search
+      - name: num_shares
+        required: false
+        type: int
+        source: bolagsverket
+      
+      # People & Relationships
+      - name: key_people
+        required: false
+        type: list[str]
+        source: web_search
+      - name: shareholders
+        required: false
+        type: list[EntityRef]
+        source: [bolagsverket, web_search]
+        note: "Bolagsverket for official records, web_search for public disclosures"
+      - name: portfolio
+        required: false
+        type: list[EntityRef]
+        source: bolagsverket
+      - name: customers
+        required: false
+        type: list[EntityRef]
+        source: web_search
+
+  query_internet:
+    file: query_internet.xml
+    description: "Generates web search queries to find company information"
+    purpose: "Generate search queries that will be executed to find data for structure_data"
+    target_fields:
+      - aliases
+      - sectors
+      - description
+      - mission
+      - website
+      - num_employees
+      - key_people
+      - shareholders
+      - customers
+
+# Field mapping summary
+field_to_prompt:
+  name: structure_data
+  organization_id: structure_data
+  aliases: structure_data
+  country_code: structure_data
+  year_founded: structure_data
+  sectors: structure_data
+  description: structure_data
+  mission: structure_data
+  website: structure_data
+  num_employees: structure_data
+  num_shares: structure_data
+  key_people: structure_data
+  shareholders: structure_data
+  portfolio: structure_data
+  customers: structure_data
+
+# Processing order
+processing_flow:
+  step_1:
+    prompt: structure_data
+    description: "Extract and structure data from Bolagsverket (if available)"
+    inputs:
+      - source: bolagsverket
+        data: "Pre-extracted Bolagsverket registry data"
+  step_2:
+    prompt: query_internet
+    description: "Generate search queries based on company name/ID from step 1"
+    inputs:
+      - company_name: "From step 1"
+      - organization_id: "From step 1"
+  step_3:
+    prompt: structure_data
+    description: "Extract and structure data from web search results, merging with Bolagsverket data"
+    inputs:
+      - source: bolagsverket
+        data: "From step 1"
+      - source: web_search
+        data: "Results from queries generated in step 2"
+    output: "Complete CompanyBase with all available fields"
+

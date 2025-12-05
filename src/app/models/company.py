@@ -37,15 +37,13 @@ class CompanyCreate(BaseModel):
 
 class CompanyIngest(CompanyBase):
     """Full entity for ingestion pipeline"""
-
-    company_id: str = Field(..., description="Swedish Org. No.")
+    pass
 
 
 class CompanyOut(CompanyBase):
     """GET response"""
 
     model_config = {"from_attributes": True}
-    company_id: str
     cluster_id: Optional[int] = None
 
 
@@ -66,6 +64,6 @@ class CompanySearchResult(CompanyOut):
 class CompanyLeads(BaseModel):
     """GET /leads response"""
 
-    company_id: str
+    organization_id: str
     cluster_id: int
     leads: list[CompanyOut]

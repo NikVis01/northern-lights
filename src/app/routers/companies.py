@@ -15,7 +15,7 @@ router = APIRouter()
 # Mock data for testing
 MOCK_COMPANIES = {
     "5591234567": CompanyOut(
-        company_id="5591234567",
+        organization_id="5591234567",
         name="Spotify AB",
         aliases=["Spotify"],
         year_founded="2006",
@@ -28,7 +28,7 @@ MOCK_COMPANIES = {
         cluster_id=1,
     ),
     "5561234568": CompanyOut(
-        company_id="5561234568",
+        organization_id="5561234568",
         name="Klarna Bank AB",
         aliases=["Klarna"],
         year_founded="2005",
@@ -41,7 +41,7 @@ MOCK_COMPANIES = {
         cluster_id=2,
     ),
     "5569876543": CompanyOut(
-        company_id="5569876543",
+        organization_id="5569876543",
         name="Northvolt AB",
         aliases=["Northvolt"],
         year_founded="2016",
@@ -69,12 +69,12 @@ async def ingest_company(
     return {"job_id": job_id, "status": "queued", "name": body.name}
 
 
-@router.get("/{company_id}", response_model=CompanyOut)
-async def get_company(company_id: str, api_key: ApiKeyDep):
+@router.get("/{organization_id}", response_model=CompanyOut)
+async def get_company(organization_id: str, api_key: ApiKeyDep):
     """Get company by Swedish Org. No."""
-    if company_id not in MOCK_COMPANIES:
-        raise HTTPException(404, f"Company {company_id} not found")
-    return MOCK_COMPANIES[company_id]
+    if organization_id not in MOCK_COMPANIES:
+        raise HTTPException(404, f"Company {organization_id} not found")
+    return MOCK_COMPANIES[organization_id]
 
 
 @router.post("/search", response_model=list[CompanySearchResult])
@@ -91,20 +91,20 @@ async def search_companies(body: CompanySearch, api_key: ApiKeyDep):
     return results[:body.limit]
 
 
-@router.get("/{company_id}/leads", response_model=CompanyLeads)
-async def get_leads(company_id: str, api_key: ApiKeyDep):
+@router.get("/{organization_id}/leads", response_model=CompanyLeads)
+async def get_leads(organization_id: str, api_key: ApiKeyDep):
     """Get companies in same Leiden cluster (competitive leads)."""
-    if company_id not in MOCK_COMPANIES:
-        raise HTTPException(404, f"Company {company_id} not found")
+    if organization_id not in MOCK_COMPANIES:
+        raise HTTPException(404, f"Company {organization_id} not found")
     
-    company = MOCK_COMPANIES[company_id]
+    company = MOCK_COMPANIES[organization_id]
     # Mock: return companies with same cluster_id
     leads = [
         c for c in MOCK_COMPANIES.values()
-        if c.cluster_id == company.cluster_id and c.company_id != company_id
+        if c.cluster_id == company.cluster_id and c.organization_id != organization_id
     ]
     return CompanyLeads(
-        company_id=company_id,
+        organization_id=organization_id,
         cluster_id=company.cluster_id or 0,
         leads=leads,
     )

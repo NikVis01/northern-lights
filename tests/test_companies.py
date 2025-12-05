@@ -6,7 +6,7 @@ class TestGetCompany:
         r = client.get("/v1/companies/5591234567")
         assert r.status_code == 200
         data = r.json()
-        assert data["company_id"] == "5591234567"
+        assert data["organization_id"] == "5591234567"
         assert data["name"] == "Spotify AB"
         assert "Technology" in data["sectors"]
 
@@ -17,7 +17,7 @@ class TestGetCompany:
 
 class TestIngest:
     def test_ingest_returns_job_id(self, client):
-        r = client.post("/v1/companies/ingest", json={"name": "Test Company AB"})
+        r = client.post("/v1/companies/ingest", json={"name": "Test Company AB", "organization_id": "1234567890"})
         assert r.status_code == 202
         data = r.json()
         assert "job_id" in data
@@ -54,10 +54,10 @@ class TestLeads:
         r = client.get("/v1/companies/5591234567/leads")
         assert r.status_code == 200
         data = r.json()
-        assert data["company_id"] == "5591234567"
+        assert data["organization_id"] == "5591234567"
         assert data["cluster_id"] == 1
         # Northvolt is in same cluster
-        lead_ids = [l["company_id"] for l in data["leads"]]
+        lead_ids = [l["organization_id"] for l in data["leads"]]
         assert "5569876543" in lead_ids
 
     def test_leads_not_found(self, client):
