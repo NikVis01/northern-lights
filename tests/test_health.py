@@ -3,3 +3,4 @@ def test_health(client):
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
+

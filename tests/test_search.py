@@ -24,3 +24,4 @@ class TestUnifiedSearch:
         scores = [item["score"] for item in results]
         assert scores == sorted(scores, reverse=True)
 
+

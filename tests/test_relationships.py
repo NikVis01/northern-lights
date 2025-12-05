@@ -28,3 +28,4 @@ class TestNetwork:
         assert data["root_id"] == "UNKNOWN"
         assert len(data["edges"]) == 0
 
+
