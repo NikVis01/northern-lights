@@ -4,7 +4,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/northern-lights-api:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/northern-lights-api:$BUILD_ID'
       - '-t'
       - 'gcr.io/$PROJECT_ID/northern-lights-api:latest'
       - '-f'
@@ -16,7 +16,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/northern-lights-api:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/northern-lights-api:$BUILD_ID'
     timeout: 600s
 
   - name: 'gcr.io/cloud-builders/docker'
@@ -33,7 +33,7 @@ steps:
       - 'deploy'
       - 'northern-lights-api'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/northern-lights-api:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/northern-lights-api:$BUILD_ID'
       - '--region'
       - 'europe-north1'
       - '--platform'
@@ -53,10 +53,11 @@ steps:
       - '300'
       - '--concurrency'
       - '80'
+      - '--cpu-boost'
     timeout: 600s
 
 images:
-  - 'gcr.io/$PROJECT_ID/northern-lights-api:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/northern-lights-api:$BUILD_ID'
   - 'gcr.io/$PROJECT_ID/northern-lights-api:latest'
 
 options:

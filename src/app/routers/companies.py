@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from uuid import uuid4
 
-from src.app.models import (
+from app.models import (
     CompanyCreate,
     CompanyOut,
     CompanySearch,
     CompanySearchResult,
     CompanyLeads,
 )
-from src.app.dependencies import SettingsDep, ApiKeyDep
+from app.dependencies import SettingsDep, ApiKeyDep
 
 router = APIRouter()
 

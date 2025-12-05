@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from src.app.config import get_settings
-from src.app.routers import companies, investors, relationships, search
+from app.config import get_settings
+from app.routers import companies, investors, relationships, search
 
 
 @asynccontextmanager

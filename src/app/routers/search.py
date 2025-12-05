@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.app.dependencies import ApiKeyDep
+from app.dependencies import ApiKeyDep
 
 router = APIRouter()
 

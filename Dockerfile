@@ -29,6 +29,7 @@ COPY pyproject.toml* ./
 
 # Set PATH to include user local bin
 ENV PATH=/home/appuser/.local/bin:$PATH
+ENV PYTHONPATH=/app/src
 
 # Change ownership
 RUN chown -R appuser:appuser /app
@@ -44,5 +45,5 @@ EXPOSE 8080
 # HEALTHCHECK removed - Cloud Run uses configured probes instead
 
 # Run uvicorn (Cloud Run sets PORT env var)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
 

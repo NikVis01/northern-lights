@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
-from src.app.models import InvestorOut, InvestorCreate, InvestorPortfolio, HoldingOut, InvestorType
-from src.app.dependencies import ApiKeyDep
+from app.models import InvestorOut, InvestorCreate, InvestorPortfolio, HoldingOut, InvestorType
+from app.dependencies import ApiKeyDep
 
 router = APIRouter()
 

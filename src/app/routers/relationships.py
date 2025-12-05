@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from src.app.models import (
+from app.models import (
     RelationshipCreate,
     RelationshipOut,
     NetworkGraph,
@@ -8,7 +8,7 @@ from src.app.models import (
     NetworkEdge,
     RelationType,
 )
-from src.app.dependencies import ApiKeyDep
+from app.dependencies import ApiKeyDep
 
 router = APIRouter()
 
