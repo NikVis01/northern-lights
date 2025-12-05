@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from unittest.mock import MagicMock, patch
 from src.app.services.graph_service import GraphService
 from src.app.models.company import CompanyOut
@@ -61,12 +62,22 @@ def test_generate_and_store_embeddings(mock_driver, mock_sentence_transformer):
         website=None,
     )
     # Mock data fetch
-    mock_result = [mock_company, mock_investor]
-    mock_session.run.return_value = [dict(r) for r in mock_result]
+    # We need to simulate the dict structure returned by Neo4j driver, including 'labels'
+    company_dict = mock_company.model_dump()
+    company_dict["labels"] = ["Company"]
+
+    investor_dict = mock_investor.model_dump()
+    investor_dict["labels"] = ["Fund"]
+    # Service expects 'company_id' in the dict to map it to 'investor_id'
+    investor_dict["company_id"] = mock_investor.investor_id
+
+    mock_result = [company_dict, investor_dict]
+    # session.run returns an iterable of records (which behave like dicts)
+    mock_session.run.return_value = mock_result
 
     # Mock encoding
     mock_model = mock_sentence_transformer.return_value
-    mock_model.encode.return_value = [[0.1, 0.2], [0.3, 0.4]]
+    mock_model.encode.return_value = [np.array([0.1, 0.2]), np.array([0.3, 0.4])]
 
     # Init service
     service = GraphService()

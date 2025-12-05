@@ -120,7 +120,9 @@ class GraphService:
                 # Both models might not have company_id attribute if InvestorOut uses investor_id
                 # But we know they came from nodes with company_id.
                 # Let's use the ID we know.
-                cid = getattr(model, "company_id", None)
+                cid = getattr(model, "company_id", None) or getattr(
+                    model, "organization_id", None
+                )
                 invid = getattr(model, "investor_id", None)
 
                 # Note: The MATCH query uses company_id, which is the unique ID in our graph.
