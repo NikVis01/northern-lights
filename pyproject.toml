@@ -18,3 +18,56 @@ dev = [
     "pytest-mock>=3.15.1",
     "python-dotenv>=1.2.1",
 ]
+
+[tool.ruff]
+# The target Python version for code generation and compatibility checks.
+target-version = "py312"
+# Set the line length limit. 88 is the Black standard.
+line-length = 120
+
+# Files and directories to exclude from linting/formatting.
+# It's good practice to exclude virtual environments, build artifacts, etc.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "build",
+    "dist",
+    "venv",
+]
+
+[tool.ruff.lint]
+# Select the set of lint rules you want to enable.
+# "E" and "W" are flake8 style errors/warnings. "F" is Pyflakes.
+# "I" is isort (import sorting), which is often handled by the formatter's fix.
+# "UP" is pyupgrade (modernizing Python code).
+select = ["E", "F", "I", "UP", "W"]
+
+# Rules to ignore globally (use sparingly).
+ignore = []
+
+# Configure isort (import sorting) to follow the Black style.
+[tool.ruff.lint.isort]
+known-first-party = ["your_project_name_here"] # Add your top-level package names
+split-on-trailing-comma = false # Black style
+force-single-line = false
+
+[tool.ruff.format]
+# The formatter uses double quotes by default, aligning with Black.
+quote-style = "double"
+# The formatter uses spaces by default.
+indent-style = "space"
+# Ensure the trailing comma is added only when necessary (Black style).
+skip-magic-trailing-comma = false
+# Use the line ending preferred by your OS or stick to standard "lf".
+line-ending = "lf"
