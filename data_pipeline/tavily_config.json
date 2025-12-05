@@ -1,0 +1,56 @@
+{
+  "search_sources": [
+    {
+      "name": "Bolagsverket",
+      "description": "Company and fund information from Bolagsverket",
+      "base_url": "https://foretagsinfo.bolagsverket.se/sok-foretagsinformation-web/foretag",
+      "search_pattern": "https://foretagsinfo.bolagsverket.se/sok-foretagsinformation-web/foretag?sokord={company_name}"
+    },
+    {
+      "name": "Stockholmsbörsen",
+      "description": "Company and fund information from Stockholmsbörsen",
+      "base_url": "https://www.stockholmsborsen.se",
+      "search_pattern": "https://www.stockholmsborsen.se/en/search?q={company_name}"
+    },
+    {
+      "name": "Finansinspektionen Företagsregistret",
+      "description": "Swedish company registry",
+      "base_url": "https://www.fi.se",
+      "search_pattern": "https://www.fi.se/sv/vara-register/foretagsregistret/index?query={company_name}#results"
+    },
+    {
+      "name": "Finansinspektionen Transaktioner",
+      "description": "Swedish transaction registry to find transaction info for a given company and who invested in it.",
+      "base_url": "https://www.fi.se",
+      "search_pattern": "https://marknadssok.fi.se/Publiceringsklient/sv-SE/Search/Search?SearchFunctionType=Insyn&Utgivare={company_name}&PersonILedandeSt%C3%A4llningNamn=&Transaktionsdatum.From=&Transaktionsdatum.To=&Publiceringsdatum.From=&Publiceringsdatum.To=&button=search&Page=1"
+    }
+  ],
+  "default_search_terms": [
+    "Investeringsfond",
+    "Fond",
+    "Företag",
+    "Bolag",
+    "Asset managment företag",
+    "Venture capital fond",
+    "Riskkapital",
+    "Private equity fond",
+    "Privatkapital",
+    "Tillväxtkapital",
+    "Growth capital",
+    "Investment fund",
+    "Investment company",
+    "Kapitalförvaltning",
+    "Capital management",
+    "Förvaltningsbolag",
+    "Management company",
+    "Hedgefond",
+    "Hedge fund",
+    "Startup bolag",
+    "Startup company",
+    "Teknologiföretag",
+    "Technology company",
+    "Tillväxtbolag",
+    "Growth company"
+  ]
+}
+
