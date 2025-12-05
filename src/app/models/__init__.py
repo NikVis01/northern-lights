@@ -1,4 +1,5 @@
 from .company import (
+    EntityRef,
     CompanyCreate,
     CompanyIngest,
     CompanyOut,
@@ -23,6 +24,7 @@ from .relationship import (
 )
 
 __all__ = [
+    "EntityRef",
     "CompanyCreate",
     "CompanyIngest",
     "CompanyOut",

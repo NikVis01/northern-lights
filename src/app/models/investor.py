@@ -22,11 +22,9 @@ class InvestorCreate(BaseModel):
 
 
 class InvestorOut(InvestorBase):
+    model_config = {"from_attributes": True}
     investor_id: str
     cluster_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True
 
 
 class InvestorPortfolio(BaseModel):

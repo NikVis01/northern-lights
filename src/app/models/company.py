@@ -1,13 +1,29 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional
+
+
+class EntityRef(BaseModel):
+    """Reference to another company/fund"""
+    entity_id: str
+    name: str
+    entity_type: str = "company"  # company | fund
 
 
 class CompanyBase(BaseModel):
     name: str
-    country_code: str = "SE"
-    description: Optional[str] = None
-    mission: Optional[str] = None
+    aliases: list[str] = Field(default_factory=list)
+    year_founded: Optional[str] = None
     sectors: list[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    num_employees: Optional[int] = None
+    num_shares: Optional[int] = None
+    mission: Optional[str] = None
+    portfolio: list[EntityRef] = Field(default_factory=list)
+    shareholders: list[EntityRef] = Field(default_factory=list)
+    customers: list[EntityRef] = Field(default_factory=list)
+    key_people: list[str] = Field(default_factory=list)
+    website: Optional[str] = None
+    country_code: str = "SE"
 
 
 class CompanyCreate(BaseModel):
@@ -22,11 +38,9 @@ class CompanyIngest(CompanyBase):
 
 class CompanyOut(CompanyBase):
     """GET response"""
+    model_config = {"from_attributes": True}
     company_id: str
     cluster_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True
 
 
 class CompanySearch(BaseModel):

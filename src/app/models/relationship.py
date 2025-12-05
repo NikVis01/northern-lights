@@ -18,10 +18,8 @@ class RelationshipCreate(BaseModel):
 
 
 class RelationshipOut(RelationshipCreate):
+    model_config = {"from_attributes": True}
     created_at: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class NetworkNode(BaseModel):
