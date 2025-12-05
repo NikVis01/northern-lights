@@ -9,6 +9,7 @@ router = APIRouter()
 MOCK_INVESTORS = {
     "INV001": InvestorOut(
         investor_id="INV001",
+        organization_id="5561111111",
         name="Sequoia Capital",
         investor_type=InvestorType.FUND,
         country_code="SE",
@@ -17,6 +18,7 @@ MOCK_INVESTORS = {
     ),
     "INV002": InvestorOut(
         investor_id="INV002",
+        organization_id="5562222222",
         name="EQT Partners",
         investor_type=InvestorType.FUND,
         country_code="SE",
@@ -64,6 +66,7 @@ async def create_investor(body: InvestorCreate, api_key: ApiKeyDep):
     investor_id = f"INV{len(MOCK_INVESTORS) + 1:03d}"
     investor = InvestorOut(
         investor_id=investor_id,
+        organization_id=body.organization_id,
         name=body.name,
         investor_type=body.investor_type,
         country_code="SE",

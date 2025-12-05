@@ -29,6 +29,7 @@ class TestCreateInvestor:
     def test_create(self, client):
         r = client.post("/v1/investors/", json={
             "name": "New Fund AB",
+            "organization_id": "5563333333",
             "investor_type": "fund"
         })
         assert r.status_code == 201
