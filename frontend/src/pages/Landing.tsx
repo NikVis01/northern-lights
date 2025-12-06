@@ -1,4 +1,5 @@
-import { ArrowRight, Database, Network, Zap, Shield, Search, TrendingUp } from "lucide-react";
+import { ArrowRight, Database, Network, Zap, Shield, Search, TrendingUp, Code2, Copy, Check } from "lucide-react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -9,6 +10,13 @@ import NetworkGraph from "@/components/LandingGraph";
 const Index = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const handleCopyCurl = (curlCommand: string, index: number) => {
+    navigator.clipboard.writeText(curlCommand);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
 
   // ... (rest of the component)
 
@@ -67,6 +75,44 @@ const Index = () => {
     { labelKey: "arch.intelligence.label", valueKey: "arch.intelligence.value" },
     { labelKey: "arch.clustering.label", valueKey: "arch.clustering.value" },
     { labelKey: "arch.delivery.label", valueKey: "arch.delivery.value" },
+  ];
+
+  const apiEndpoints = [
+    {
+      icon: Search,
+      titleKey: "api.search.title",
+      methodKey: "api.search.method",
+      descKey: "api.search.desc",
+      curlKey: "api.search.curl",
+    },
+    {
+      icon: Database,
+      titleKey: "api.companies.title",
+      methodKey: "api.companies.method",
+      descKey: "api.companies.desc",
+      curlKey: "api.companies.curl",
+    },
+    {
+      icon: TrendingUp,
+      titleKey: "api.investors.title",
+      methodKey: "api.investors.method",
+      descKey: "api.investors.desc",
+      curlKey: "api.investors.curl",
+    },
+    {
+      icon: Network,
+      titleKey: "api.network.title",
+      methodKey: "api.network.method",
+      descKey: "api.network.desc",
+      curlKey: "api.network.curl",
+    },
+    {
+      icon: Zap,
+      titleKey: "api.health.title",
+      methodKey: "api.health.method",
+      descKey: "api.health.desc",
+      curlKey: "api.health.curl",
+    },
   ];
 
   return (
@@ -221,7 +267,7 @@ const Index = () => {
 ┌─────────────────────────────────────┐
 │    Cloud Run (FastAPI Backend)      │
 │  ┌────────┐ ┌────────┐ ┌────────┐   │
-│  │/search │ │/leads  │ │/company│   │
+│  │/search │ │/ingest │ │/company│   │
 │  └────────┘ └────────┘ └────────┘   │
 └─────────────────────────────────────┘
                     │
@@ -235,6 +281,61 @@ const Index = () => {
                 </pre>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* API Reference */}
+        <section className="container py-32">
+          <div className="mb-16">
+            <p className="font-mono text-xs text-muted-foreground tracking-widest uppercase mb-4">{t("api.subtitle")}</p>
+            <h2 className="text-3xl md:text-4xl font-light">{t("api.title")}</h2>
+            <p className="text-muted-foreground mt-4">{t("api.description")}</p>
+          </div>
+          
+          <div className="space-y-8">
+            {apiEndpoints.map((endpoint, i) => (
+              <div 
+                key={i}
+                className="border border-border/40 rounded-lg bg-card/30 backdrop-blur-sm overflow-hidden hover:bg-card/40 transition-all duration-300"
+              >
+                <div className="p-6 md:p-8">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start gap-4 flex-1">
+                      <endpoint.icon className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-mono text-xs text-muted-foreground mb-2 tracking-wide">{t(endpoint.methodKey as any)}</p>
+                        <h3 className="text-lg font-medium">{t(endpoint.titleKey as any)}</h3>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-6">{t(endpoint.descKey as any)}</p>
+                  
+                  <div className="relative">
+                    <pre className="bg-background/50 border border-border/40 rounded p-4 overflow-x-auto font-mono text-xs text-foreground/80 mb-4">
+                      {t(endpoint.curlKey as any)}
+                    </pre>
+                    <button
+                      onClick={() => handleCopyCurl(t(endpoint.curlKey as any) as string, i)}
+                      className="absolute top-3 right-3 p-2 rounded bg-background/60 hover:bg-background/80 border border-border/40 transition-all duration-200 flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+                      title="Copy curl command"
+                    >
+                      {copiedIndex === i ? (
+                        <>
+                          <Check className="h-4 w-4" />
+                          {t("api.copied")}
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4" />
+                          {t("api.copy")}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 
