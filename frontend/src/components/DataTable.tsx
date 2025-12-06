@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Building2, Landmark, Users, Search, ArrowUpDown, ChevronDown, ExternalLink, AlertCircle } from "lucide-react";
+import { Building2, Landmark, Users, Search, ArrowUpDown, ChevronDown, ExternalLink, AlertCircle, Copy } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -200,6 +200,21 @@ const DataTable = () => {
     }
   };
 
+  const handleCopy = (text: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    
+    // Simple toast notification
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg z-50 animate-in fade-in slide-in-from-bottom-2';
+    toast.textContent = 'Copied to clipboard!';
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('animate-out', 'fade-out', 'slide-out-to-bottom-2');
+      setTimeout(() => document.body.removeChild(toast), 200);
+    }, 2000);
+  };
+
   const handleRowClick = (entity: Entity) => {
     // Toggle selection - deselect if already selected
     setSelectedEntityId(entity.id === selectedEntityId ? null : entity.id);
@@ -324,8 +339,60 @@ const DataTable = () => {
                     </Tooltip>
                   </TooltipProvider>
                 </TableCell>
-                <TableCell className="font-medium text-foreground text-sm">{entity.name}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{entity.orgNumber}</TableCell>
+                <TableCell className="font-medium text-foreground text-sm">
+                  <div className="flex items-center gap-2 group/name">
+                    <span>{entity.name}</span>
+                    <button
+                      onClick={(e) => handleCopy(entity.name, e)}
+                      className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1 hover:bg-primary/10 rounded"
+                      title="Copy name"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                      </svg>
+                    </button>
+                  </div>
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 group/org">
+                    <span>{entity.orgNumber}</span>
+                    {entity.orgNumber !== "-" && (
+                      <button
+                        onClick={(e) => handleCopy(entity.orgNumber, e)}
+                        className="opacity-0 group-hover/org:opacity-100 transition-opacity p-1 hover:bg-primary/10 rounded"
+                        title="Copy org number"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Badge variant="secondary" className="text-xs font-normal bg-secondary/50">{entity.sector}</Badge>
                 </TableCell>

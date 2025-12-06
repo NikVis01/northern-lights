@@ -2,6 +2,7 @@
 Portfolio ingestion service that integrates hack_net.py for FI document extraction.
 Recursively processes portfolio companies and creates OWNS relationships.
 """
+
 import sys
 import os
 import logging
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Try to import Tavily for web search
 try:
     from tavily import TavilyClient
+
     TAVILY_AVAILABLE = True
     TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
     if TAVILY_API_KEY:
@@ -34,6 +36,7 @@ except ImportError:
 # Try to import Gemini for org number extraction
 try:
     import google.generativeai as genai
+
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
@@ -54,8 +57,9 @@ def is_valid_org_number(org_id: str) -> bool:
     Format: 10 digits, optionally with dash (e.g., "556043-4200" or "5560434200")
     """
     import re
+
     # Remove dashes and spaces
-    cleaned = re.sub(r'[-\s]', '', org_id)
+    cleaned = re.sub(r"[-\s]", "", org_id)
     # Check if it's exactly 10 digits
     return len(cleaned) == 10 and cleaned.isdigit()
 
@@ -64,7 +68,7 @@ def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]
     """
     Call hack_net.py to extract portfolio companies from FI documents.
     Also extracts report text for company field extraction.
-    
+
     Returns:
         Tuple of (portfolio_list, report_text)
         portfolio_list: List of {company_name, ownership_percentage}
@@ -74,35 +78,35 @@ def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]
     if not is_valid_org_number(organization_id):
         logger.warning(f"Skipping FI search for '{organization_id}' - not a valid org number format")
         return [], None
-    
+
     try:
         # Import hack_net module using sys.path manipulation (cleaner than importlib)
         import sys
         import os
         import tempfile
         from pathlib import Path
-        
+
         # Add parent directory to path if not already there
         hack_net_dir = str(HACK_NET_PATH)
         if hack_net_dir not in sys.path:
             sys.path.insert(0, hack_net_dir)
-        
+
         # Import the module
         import hack_net
-        
+
         logger.info(f"Searching FI documents for organization {organization_id}")
         # Search for documents
         links = hack_net.search_fi_documents(organization_id)
         if not links:
             logger.warning(f"No FI documents found for {organization_id}")
             return [], None
-        
+
         logger.info(f"Found {len(links)} document(s), processing first document...")
-        
+
         # Process first (latest) document to get portfolio
         portfolio = hack_net.process_document(links[0], organization_id)
         logger.info(f"Extracted {len(portfolio)} portfolio company/ies")
-        
+
         # Also extract report text for company field extraction
         report_text = None
         try:
@@ -110,11 +114,13 @@ def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]
                 temp_path = Path(temp_dir)
                 file_path = hack_net.download_file(links[0], temp_path)
                 extracted_files = hack_net.unzip_if_needed(file_path)
-                
+
                 # Find PDF or HTML file
                 pdf_files = [f for f in extracted_files if f.suffix.lower() == ".pdf" and f.is_file()]
-                html_files = [f for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"] and f.is_file()]
-                
+                html_files = [
+                    f for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"] and f.is_file()
+                ]
+
                 if pdf_files:
                     # Extract text from first 20 pages of PDF
                     report_text = hack_net.extract_text_from_pdf(pdf_files[0], debug=False)
@@ -122,6 +128,7 @@ def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]
                     if not report_text or len(report_text) < 1000:
                         # Try extracting more pages
                         from pypdf import PdfReader
+
                         reader = PdfReader(str(pdf_files[0]))
                         text_parts = []
                         for i in range(min(20, len(reader.pages))):
@@ -136,13 +143,13 @@ def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]
                             report_text = "\n".join(text_parts)
                 elif html_files:
                     report_text = hack_net.extract_text_from_html(html_files[0], debug=False)
-                
+
                 if report_text:
                     logger.info(f"Extracted {len(report_text)} characters from report for field extraction")
         except Exception as e:
             logger.warning(f"Could not extract report text for field extraction: {e}")
             report_text = None
-        
+
         return portfolio, report_text
     except ImportError as e:
         logger.error(f"Missing dependencies for hack_net (playwright, etc.): {e}")
@@ -160,27 +167,23 @@ def lookup_org_number_from_web(company_name: str) -> Optional[str]:
     if not tavily_client or not gemini_model:
         logger.debug(f"Tavily or Gemini not available, skipping web lookup for {company_name}")
         return None
-    
+
     try:
         # Search web for company name + organisationsnummer
         search_query = f"{company_name} organisationsnummer"
         logger.info(f"Searching web for: {search_query}")
-        
-        response = tavily_client.search(
-            query=search_query,
-            search_depth="basic",
-            max_results=5
-        )
-        
+
+        response = tavily_client.search(query=search_query, search_depth="basic", max_results=5)
+
         # Aggregate search results
         search_context = []
         for result in response.get("results", []):
             search_context.append(f"Source: {result.get('url', '')}\nContent: {result.get('content', '')}")
-        
+
         if not search_context:
             logger.warning(f"No web search results for {company_name}")
             return None
-        
+
         # Use Gemini to extract org number
         prompt = f"""You are analyzing web search results to find the Swedish organization number (organisationsnummer) for a company.
 
@@ -194,23 +197,24 @@ If found, return ONLY the organization number (10 digits with or without dash).
 If not found, return "NOT_FOUND".
 
 Organization number:"""
-        
+
         gemini_response = gemini_model.generate_content(prompt)
         org_number = gemini_response.text.strip()
-        
+
         # Clean up response
         if "NOT_FOUND" in org_number.upper() or len(org_number) < 10:
             return None
-        
+
         # Extract just the digits
         import re
-        digits = re.sub(r'[^\d]', '', org_number)
+
+        digits = re.sub(r"[^\d]", "", org_number)
         if len(digits) == 10:
             # Format as XXXXXX-XXXX
             formatted = f"{digits[:6]}-{digits[6:]}"
             logger.info(f"Found org number for {company_name}: {formatted}")
             return formatted
-        
+
         return None
     except Exception as e:
         logger.error(f"Error looking up org number for {company_name}: {e}")
@@ -221,30 +225,30 @@ def lookup_or_create_company(company_name: str) -> Optional[str]:
     """
     Look up company by name in Neo4j, or create with real org number if found via web search.
     Returns organization_id (company_id in DB) or None if no valid org number found.
-    
+
     IMPORTANT: Only creates companies with valid Swedish organization numbers.
     Does NOT create placeholder companies with invalid IDs.
     """
     # First, try to find real org number via web search
     org_number = lookup_org_number_from_web(company_name)
-    
+
     if not org_number or not is_valid_org_number(org_number):
         logger.warning(f"Could not find valid organization number for '{company_name}'. Skipping company creation.")
         return None
-    
+
     # Validate the org number before proceeding
     org_id = org_number
     logger.info(f"Using real org number {org_id} for {company_name}")
-    
+
     # Check if company already exists
     existing = company_queries.get_company(org_id)
     if existing:
         return existing.get("company_id", org_id)
-    
+
     # Extract company fields from web search before creating
     logger.info(f"Extracting company fields for {company_name} ({org_id})")
     extracted_fields = extract_company_fields(company_name, org_id, report_text=None)
-    
+
     # Create company node with real org number and extracted fields
     company_data = {
         "company_id": org_id,
@@ -256,78 +260,72 @@ def lookup_or_create_company(company_name: str) -> Optional[str]:
     }
     company_data.update(extracted_fields)  # Merge extracted fields
     company_queries.upsert_company(company_data)
-    
+
     return org_id
 
 
 def process_portfolio_companies(
-    source_org_id: str,
-    portfolio_data: List[Dict[str, Any]],
-    visited: Set[str] = None
+    source_org_id: str, portfolio_data: List[Dict[str, Any]], visited: Set[str] = None
 ) -> List[EntityRef]:
     """
     Process portfolio companies from hack_net output.
     Creates/updates company nodes and OWNS relationships.
-    
+
     Args:
         source_org_id: Organization ID of the company owning the portfolio
         portfolio_data: List from hack_net.py [{company_name, ownership_percentage}]
         visited: Set of org_ids already processed (for recursion prevention)
-    
+
     Returns:
         List of EntityRef objects for the portfolio field
     """
     if visited is None:
         visited = set()
-    
+
     if source_org_id in visited:
         return []
-    
+
     visited.add(source_org_id)
-    
+
     entity_refs = []
-    
+
     for item in portfolio_data:
         company_name = item.get("company_name", "").strip()
         ownership_pct = item.get("ownership_percentage")
-        
+
         if not company_name:
             continue
-        
+
         # Look up or create company (only with valid org number)
         target_org_id = lookup_or_create_company(company_name)
-        
+
         # Skip if no valid org number found
         if not target_org_id:
             logger.warning(f"Skipping company '{company_name}' - no valid organization number found")
             continue
-        
+
         # Skip self-ownership
         if source_org_id == target_org_id:
             logger.warning(f"Skipping self-ownership: {company_name} ({target_org_id})")
             continue
-        
+
         # Create OWNS relationship with ownership percentage
         properties = {}
         if ownership_pct is not None:
             properties["share_percentage"] = float(ownership_pct)
-        
-        relationship_queries.add_ownership(
-            owner_id=source_org_id,
-            company_id=target_org_id,
-            properties=properties
-        )
-        
+
+        relationship_queries.add_ownership(owner_id=source_org_id, company_id=target_org_id, properties=properties)
+
         # Extract company fields from report and web for this portfolio company (daughter company)
         # This should happen for ALL portfolio companies, not just those with their own portfolios
         logger.info(f"Extracting company fields for portfolio company {target_org_id} ({company_name})")
-        
+
         # Try to get report text for this portfolio company
         portfolio_data_recursive, report_text_recursive = extract_portfolio_from_fi(target_org_id)
-        
+
         # Extract fields from both report and web search
         extracted_fields = extract_company_fields(company_name, target_org_id, report_text_recursive)
-        
+
         # Update the company node with extracted fields
         if extracted_fields:
             target_company = company_queries.get_company(target_org_id) or {}
@@ -337,25 +335,20 @@ def process_portfolio_companies(
             if "country_code" not in target_company or not target_company["country_code"]:
                 target_company["country_code"] = "SE"
             company_queries.upsert_company(target_company)
-            logger.info(f"Updated portfolio company {target_org_id} with extracted fields: {list(extracted_fields.keys())}")
-        
+            logger.info(
+                f"Updated portfolio company {target_org_id} with extracted fields: {list(extracted_fields.keys())}"
+            )
+
         # Create EntityRef
-        entity_refs.append(EntityRef(
-            entity_id=target_org_id,
-            name=company_name,
-            entity_type="company",
-            ownership_pct=ownership_pct
-        ))
-        
+        entity_refs.append(
+            EntityRef(entity_id=target_org_id, name=company_name, entity_type="company", ownership_pct=ownership_pct)
+        )
+
         # Recursively process this portfolio company if it has its own portfolio
         if target_org_id not in visited and portfolio_data_recursive:
             # Process the recursive portfolio
-            recursive_entities = process_portfolio_companies(
-                target_org_id,
-                portfolio_data_recursive,
-                visited
-            )
-            
+            recursive_entities = process_portfolio_companies(target_org_id, portfolio_data_recursive, visited)
+
             # If this company has a portfolio (found in FI docs), convert it to Fund
             # Use portfolio_data_recursive check, not recursive_entities, because
             # recursive_entities might be empty if all items were already visited
@@ -367,7 +360,7 @@ def process_portfolio_companies(
                     "entity_id": e.entity_id,
                     "name": e.name,
                     "entity_type": e.entity_type,
-                    "ownership_pct": e.ownership_pct
+                    "ownership_pct": e.ownership_pct,
                 }
                 for e in recursive_entities
             ]
@@ -380,33 +373,35 @@ def process_portfolio_companies(
             if "country_code" not in target_company or not target_company["country_code"]:
                 target_company["country_code"] = "SE"
             investor_queries.upsert_investor(target_company)
-    
+
     return entity_refs
 
 
 def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, Any]:
     """
     Main ingestion function: extracts portfolio from FI and recursively processes.
-    
+
     Returns:
         Dict with portfolio EntityRefs and processing stats
     """
     # Ensure source company exists
     existing = company_queries.get_company(organization_id)
     if not existing:
-        company_queries.upsert_company({
-            "company_id": organization_id,
-            "name": name,
-            "country_code": "SE",
-            "description": "",
-            "mission": "",
-            "sectors": [],
-        })
-    
+        company_queries.upsert_company(
+            {
+                "company_id": organization_id,
+                "name": name,
+                "country_code": "SE",
+                "description": "",
+                "mission": "",
+                "sectors": [],
+            }
+        )
+
     # Extract portfolio from FI documents and report text
     logger.info(f"Starting portfolio extraction for {organization_id} ({name})")
     portfolio_data, report_text = extract_portfolio_from_fi(organization_id)
-    
+
     if not portfolio_data:
         logger.warning(f"No portfolio data extracted for {organization_id}")
         # Still try to extract company fields from report/web even if no portfolio
@@ -419,38 +414,25 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
                 existing["company_id"] = organization_id
                 existing["name"] = name
                 company_queries.upsert_company(existing)
-        return {
-            "organization_id": organization_id,
-            "portfolio": [],
-            "companies_processed": 0
-        }
-    
+        return {"organization_id": organization_id, "portfolio": [], "companies_processed": 0}
+
     # Extract company fields from report and web search
     logger.info(f"Extracting company fields from report and web for {organization_id}")
     extracted_fields = extract_company_fields(name, organization_id, report_text)
-    
+
     logger.info(f"Processing {len(portfolio_data)} portfolio companies...")
-    
+
     # Process portfolio companies (recursive)
     visited = set()
-    portfolio_entities = process_portfolio_companies(
-        organization_id,
-        portfolio_data,
-        visited
-    )
-    
+    portfolio_entities = process_portfolio_companies(organization_id, portfolio_data, visited)
+
     # Update company's portfolio field in Neo4j
     # Convert EntityRef to dict for storage
     portfolio_data_for_storage = [
-        {
-            "entity_id": e.entity_id,
-            "name": e.name,
-            "entity_type": e.entity_type,
-            "ownership_pct": e.ownership_pct
-        }
+        {"entity_id": e.entity_id, "name": e.name, "entity_type": e.entity_type, "ownership_pct": e.ownership_pct}
         for e in portfolio_entities
     ]
-    
+
     # Update company node with portfolio data and extracted fields
     existing = company_queries.get_company(organization_id) or {}
     # Merge extracted fields with existing data
@@ -462,7 +444,7 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
     if "country_code" not in existing or not existing["country_code"]:
         existing["country_code"] = "SE"
     company_queries.upsert_company(existing)
-    
+
     # If portfolio was found, convert Company to Fund (add Fund label)
     if portfolio_entities:
         logger.info(f"Company {organization_id} has portfolio - converting to Fund")
@@ -470,24 +452,25 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
         # Get existing company data to preserve all fields
         existing_company = company_queries.get_company(organization_id) or {}
         # Update as Fund, preserving all existing fields
-        investor_queries.upsert_investor({
-            "company_id": organization_id,
-            "name": existing_company.get("name", name),
-            "country_code": existing_company.get("country_code", "SE"),
-            "description": existing_company.get("description"),
-            "sectors": existing_company.get("sectors"),
-            "mission": existing_company.get("mission"),
-            "website": existing_company.get("website"),
-            "num_employees": existing_company.get("num_employees"),
-            "year_founded": existing_company.get("year_founded"),
-            "aliases": existing_company.get("aliases"),
-            "key_people": existing_company.get("key_people"),
-            "portfolio": portfolio_data_for_storage,
-        })
-    
+        investor_queries.upsert_investor(
+            {
+                "company_id": organization_id,
+                "name": existing_company.get("name", name),
+                "country_code": existing_company.get("country_code", "SE"),
+                "description": existing_company.get("description"),
+                "sectors": existing_company.get("sectors"),
+                "mission": existing_company.get("mission"),
+                "website": existing_company.get("website"),
+                "num_employees": existing_company.get("num_employees"),
+                "year_founded": existing_company.get("year_founded"),
+                "aliases": existing_company.get("aliases"),
+                "key_people": existing_company.get("key_people"),
+                "portfolio": portfolio_data_for_storage,
+            }
+        )
+
     return {
         "organization_id": organization_id,
         "portfolio": portfolio_entities,
-        "companies_processed": len(visited) - 1  # Exclude source
+        "companies_processed": len(visited) - 1,  # Exclude source
     }
-

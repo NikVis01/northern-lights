@@ -27,6 +27,7 @@ const Header = () => {
   const handleLogout = () => {
     // TODO: Implement actual logout with Supabase
     console.log("Logout clicked");
+    window.location.href = "/";
   };
 
   const formatTimestamp = (date: Date | null) => {

@@ -251,6 +251,27 @@ const NetworkGraph = () => {
 
   return (
     <div className="relative h-full" ref={containerRef}>
+      {/* Subtle gradient background */}
+      <div 
+        className="absolute inset-0 rounded-lg"
+        style={{
+          background: isDark 
+            ? 'radial-gradient(ellipse at center, rgba(30, 30, 45, 1) 0%, rgba(15, 15, 25, 1) 100%)'
+            : 'radial-gradient(ellipse at center, rgba(245, 245, 250, 1) 0%, rgba(230, 230, 240, 1) 100%)'
+        }}
+      />
+      
+      {/* Grain effect overlay */}
+      <div 
+        className="absolute inset-0 rounded-lg pointer-events-none z-10 opacity-[0.25]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: '200px 200px',
+          mixBlendMode: isDark ? 'overlay' : 'multiply'
+        }}
+      />
+      
       <div className="absolute inset-0 rounded-lg overflow-hidden">
         <ForceGraph2D
           ref={fgRef}
@@ -314,6 +335,11 @@ const NetworkGraph = () => {
           <div className="w-2 h-2 rounded-full bg-muted-foreground/60" />
           <span>{t("investors") as string}</span>
         </div>
+      </div>
+
+      {/* Interaction Hint - Bottom Center */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-foreground/70 font-semibold pointer-events-none select-none">
+        You can move clusters by clicking and dragging them
       </div>
       
       {/* Info Tip */}

@@ -100,7 +100,7 @@ export const translations = {
     // Chat Panel (Hub)
     ingestionAgent: "Ingestion Agent",
     addCompany: "Add company...",
-    readyToProcess: "Ready to process ingestion requests. Enter a company name or org number to add to the registry.",
+    readyToProcess: "Ready to process ingestion requests. Enter a company name or org number to add to the registry. You can copy names or IDs from the data table to get started.",
     queuing: "Queuing \"{input}\" for ingestion. Processing will complete in ~5 minutes.",
     foundEntity: "Found entity matching query. Generating vector embeddings and assigning to Cluster #3.",
     ingestionComplete: "Ingestion complete. Entity added to graph with 4 ownership connections identified.",
@@ -203,7 +203,7 @@ export const translations = {
     // Chat Panel (Hub)
     ingestionAgent: "Inmatningsagent",
     addCompany: "Lägg till företag...",
-    readyToProcess: "Redo att behandla inmatningsförfrågningar. Ange ett företagsnamn eller org-nummer för att lägga till i registret.",
+    readyToProcess: "Redo att behandla inmatningsförfrågningar. Ange ett företagsnamn eller org-nummer för att lägga till i registret. Du kan kopiera namn eller ID från datatabellen för att komma igång.",
     queuing: "Köar \"{input}\" för inmatning. Bearbetningen slutförs om ~5 minuter.",
     foundEntity: "Hittade matchande enhet. Genererar vektorinbäddningar och tilldelar till Kluster #3.",
     ingestionComplete: "Inmatning klar. Enhet tillagd i grafen med 4 identifierade ägarkopplingar.",
