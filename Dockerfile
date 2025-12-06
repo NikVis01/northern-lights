@@ -28,6 +28,10 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/appuser/.local
 
+# Create necessary directories for appuser with proper permissions
+RUN mkdir -p /home/appuser/.cache /home/appuser/.config && \
+    chown -R appuser:appuser /home/appuser/.local /home/appuser/.cache /home/appuser/.config
+
 # Set PATH to include user local bin before switching users
 ENV PATH=/home/appuser/.local/bin:$PATH
 
