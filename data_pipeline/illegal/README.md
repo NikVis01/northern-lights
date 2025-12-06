@@ -17,7 +17,7 @@ Automates retrieval of regulatory documents from the Swedish Finansinspektionen 
 
 ```bash
 # Install dependencies
-pip install playwright PyPDF2 google-generativeai requests python-dotenv pdf2image Pillow
+pip install playwright pypdf google-generativeai requests python-dotenv pdf2image Pillow
 
 # Install Playwright browser binaries
 playwright install chromium
@@ -85,7 +85,7 @@ ORGANIZATION_NUMBER = "556043-4200"  # Change this
 ## Requirements
 
 - **Playwright**: Browser automation for ASP.NET ViewState handling
-- **PyPDF2**: PDF text extraction
+- **pypdf**: PDF text extraction and page manipulation
 - **Google Generative AI**: Gemini API for portfolio extraction
 - **Python-dotenv**: Environment variable management
 

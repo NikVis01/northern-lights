@@ -24,6 +24,9 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
     WITH f
     WHERE $vector IS NOT NULL
     SET f.vector = $vector
+    WITH f
+    WHERE $portfolio IS NOT NULL
+    SET f.portfolio = $portfolio
     """
 
     params = {
@@ -33,6 +36,7 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
         "description": investor_data.get("description", ""),
         "sectors": investor_data.get("sectors", []),
         "vector": investor_data.get("vector"),
+        "portfolio": investor_data.get("portfolio"),
     }
 
     driver = get_driver()

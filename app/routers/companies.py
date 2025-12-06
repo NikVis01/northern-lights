@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from uuid import uuid4
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 from app.models import (
     CompanyCreate,
@@ -11,6 +13,7 @@ from app.models import (
 from app.dependencies import SettingsDep, ApiKeyDep
 from app.db.queries import company_queries
 from app.services.graph_service import GraphService
+from app.services.portfolio_ingestion import ingest_company_with_portfolio
 
 router = APIRouter()
 
@@ -47,10 +50,46 @@ async def ingest_company(
     settings: SettingsDep,
     api_key: ApiKeyDep,
 ):
-    """Trigger async ingestion pipeline. Returns job_id immediately."""
-    job_id = str(uuid4())
-    # TODO: Push to Pub/Sub
-    return {"job_id": job_id, "status": "queued", "name": body.name}
+    """
+    Trigger ingestion pipeline with FI document portfolio extraction.
+    Recursively processes portfolio companies and creates OWNS relationships.
+    """
+    try:
+        # Run sync Playwright code in thread pool to avoid blocking async event loop
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor,
+                ingest_company_with_portfolio,
+                body.organization_id,
+                body.name
+            )
+        
+        return {
+            "job_id": str(uuid4()),
+            "status": "completed",
+            "organization_id": result["organization_id"],
+            "portfolio_companies_found": len(result["portfolio"]),
+            "companies_processed": result["companies_processed"]
+        }
+    except ImportError as e:
+        return {
+            "job_id": str(uuid4()),
+            "status": "error",
+            "error": f"Missing dependencies: {str(e)}. Please install: pip install playwright && playwright install chromium",
+            "organization_id": body.organization_id,
+            "portfolio_companies_found": 0,
+            "companies_processed": 0
+        }
+    except Exception as e:
+        return {
+            "job_id": str(uuid4()),
+            "status": "error",
+            "error": str(e),
+            "organization_id": body.organization_id,
+            "portfolio_companies_found": 0,
+            "companies_processed": 0
+        }
 
 
 @router.get("/{organization_id}", response_model=CompanyOut)

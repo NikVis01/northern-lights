@@ -17,6 +17,13 @@ router = APIRouter()
 @router.post("/", response_model=RelationshipOut, status_code=201)
 async def create_relationship(body: RelationshipCreate, api_key: ApiKeyDep):
     """Create ownership/investment relationship."""
+    # Prevent self-ownership
+    if body.source_id == body.target_id:
+        raise HTTPException(
+            status_code=400,
+            detail="A company or fund cannot own itself"
+        )
+    
     properties = {}
     if body.ownership_pct is not None:
         properties["share_percentage"] = body.ownership_pct

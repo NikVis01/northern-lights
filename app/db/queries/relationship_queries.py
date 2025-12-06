@@ -6,22 +6,26 @@ def add_ownership(
     owner_id: str, company_id: str, properties: Dict[str, Any] = None
 ) -> None:
     """
-    Create an OWNS relationship from an owner (Fund or Company) to a Company.
+    Create an OWNS relationship from an owner (Fund or Company) to a target (Fund or Company).
+    Supports bidirectional ownership (Fund A can own Fund B, and Fund B can own Fund A).
+    Prevents self-ownership (a company/fund cannot own itself).
 
     owner_id: company_id of the owner (Fund or Company)
-    company_id: company_id of the target Company
+    company_id: company_id of the target (Fund or Company)
     properties: Additional properties for the relationship (e.g., share_percentage)
     """
-    # Try to match owner as Fund first, then Company if not found?
-    # Or just match node with company_id regardless of label?
-    # Spec says company_id is unique identifier.
-    # Let's assume we match on company_id for both source and target.
-    # Source can be :Fund or :Company. Target is :Company.
+    # Prevent self-ownership
+    if owner_id == company_id:
+        return
+    
+    # Both source and target can be Fund or Company
+    # This allows bidirectional ownership between funds
 
     query = """
-    MATCH (owner {company_id: $owner_id})
-    WHERE 'Fund' IN labels(owner) OR 'Company' IN labels(owner)
-    MATCH (target:Company {company_id: $company_id})
+    MATCH (owner)
+    WHERE owner.company_id = $owner_id AND ('Fund' IN labels(owner) OR 'Company' IN labels(owner))
+    MATCH (target)
+    WHERE target.company_id = $company_id AND ('Fund' IN labels(target) OR 'Company' IN labels(target))
     MERGE (owner)-[r:OWNS]->(target)
     SET r += $properties, r.updated_at = datetime()
     """
@@ -60,10 +64,11 @@ def get_company_owners(company_id: str) -> List[Dict[str, Any]]:
 
 def get_portfolio(owner_id: str) -> List[Dict[str, Any]]:
     """
-    Get all companies owned by a specific entity (Fund or Company).
+    Get all entities (Funds or Companies) owned by a specific entity (Fund or Company).
     """
     query = """
-    MATCH (owner {company_id: $owner_id})-[r:OWNS]->(target:Company)
+    MATCH (owner {company_id: $owner_id})-[r:OWNS]->(target)
+    WHERE 'Fund' IN labels(target) OR 'Company' IN labels(target)
     RETURN target, r
     """
 
@@ -82,10 +87,19 @@ def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
     """
     Get ownership network graph around an entity up to specified depth.
     Returns nodes and relationships.
+    Handles bidirectional ownership (both directions of OWNS relationships).
+    The undirected relationship pattern `-[r:OWNS*1..{depth}]-` captures both directions.
     """
-    query = """
-    MATCH path = (root {company_id: $entity_id})-[r:OWNS*1..$depth]-(connected)
-    WHERE (root:Company OR root:Fund) AND (connected:Company OR connected:Fund)
+    # Neo4j doesn't allow parameters in variable-length patterns, so we format the depth
+    # Limit depth to prevent excessive queries
+    depth = min(max(1, depth), 5)
+    
+    # Undirected relationship pattern captures both (A)-[:OWNS]->(B) and (B)-[:OWNS]->(A)
+    query = f"""
+    MATCH (root)
+    WHERE root.company_id = $entity_id AND (root:Company OR root:Fund)
+    MATCH path = (root)-[r:OWNS*1..{depth}]-(connected)
+    WHERE (connected:Company OR connected:Fund)
     WITH root, connected, relationships(path) as rels
     RETURN DISTINCT root, connected, rels, labels(root) as root_labels, labels(connected) as connected_labels
     LIMIT 100
@@ -93,7 +107,7 @@ def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
     
     driver = get_driver()
     with driver.session() as session:
-        result = session.run(query, entity_id=entity_id, depth=depth)
+        result = session.run(query, entity_id=entity_id)
         nodes = {}
         edges = []
         root_node = None
@@ -136,8 +150,8 @@ def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
         if not root_node:
             # Try to get root node separately
             root_query = """
-            MATCH (root {company_id: $entity_id})
-            WHERE root:Company OR root:Fund
+            MATCH (root)
+            WHERE root.company_id = $entity_id AND (root:Company OR root:Fund)
             RETURN root, labels(root) as labels
             """
             root_result = session.run(root_query, entity_id=entity_id)

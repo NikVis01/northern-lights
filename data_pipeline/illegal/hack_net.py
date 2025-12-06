@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 import google.generativeai as genai
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 from PIL import Image
 import io
 
@@ -64,7 +64,17 @@ def extract_download_links(page, base_url: str) -> List[str]:
     
     try:
         # Wait for results to load (look for file links or results table)
-        page.wait_for_selector("a[href*='GetFile.aspx']", timeout=10000)
+        # Use a more lenient wait - just wait for any content
+        try:
+            page.wait_for_selector("a[href*='GetFile.aspx']", timeout=20000)
+        except PlaywrightTimeoutError:
+            # If no links found, wait a bit more and check for any links
+            page.wait_for_timeout(3000)
+            # Check if page has any links at all
+            all_links = page.query_selector_all("a")
+            if not all_links:
+                print("⚠️  No links found on page")
+                return []
         
         # Find all links containing 'GetFile.aspx'
         links = page.query_selector_all("a[href*='GetFile.aspx']")
@@ -123,11 +133,16 @@ def search_fi_documents(organization_number: str) -> List[str]:
         
         try:
             print(f"🌐 Navigating to: {SEARCH_URL}")
-            page.goto(SEARCH_URL, wait_until="networkidle", timeout=30000)
+            page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=60000)
             
-            # Wait for the form to be ready
+            # Wait for the form to be ready - try multiple approaches
             print("⏳ Waiting for form to load...")
-            page.wait_for_selector(f"#{ORG_NUMBER_FIELD_ID.replace('$', '_')}", timeout=10000)
+            try:
+                # Wait for any input field to appear (more lenient)
+                page.wait_for_selector("input[type='text']", timeout=30000)
+            except PlaywrightTimeoutError:
+                # If that fails, wait a bit and continue anyway
+                page.wait_for_timeout(3000)
             
             # Fill in organization number
             # ASP.NET uses $ in IDs, but in DOM they're often _ or different
@@ -187,10 +202,15 @@ def search_fi_documents(organization_number: str) -> List[str]:
             # Wait for results page to load
             print("⏳ Waiting for results...")
             try:
-                # Wait for either results or "no results" message
-                page.wait_for_load_state("networkidle", timeout=15000)
-                # Additional wait for dynamic content
-                page.wait_for_timeout(2000)
+                # Wait for page to be interactive
+                page.wait_for_load_state("domcontentloaded", timeout=30000)
+                # Additional wait for dynamic content (ASP.NET can be slow)
+                page.wait_for_timeout(5000)
+                # Try to wait for network idle, but don't fail if it times out
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except PlaywrightTimeoutError:
+                    print("⚠️  Warning: Network idle timeout, but continuing...")
             except PlaywrightTimeoutError:
                 print("⚠️  Warning: Page load timeout, but continuing...")
             
@@ -218,15 +238,21 @@ def detect_file_type(content: bytes, content_type: str = None) -> str:
         return ".zip"
     elif content.startswith(b"%PDF"):
         return ".pdf"
+    elif content.startswith(b"<!DOCTYPE") or content.startswith(b"<html") or content.startswith(b"<HTML"):
+        return ".html"
     elif content_type:
         if "zip" in content_type.lower():
             return ".zip"
         elif "pdf" in content_type.lower():
             return ".pdf"
+        elif "html" in content_type.lower():
+            return ".html"
         elif "application/zip" in content_type.lower():
             return ".zip"
         elif "application/pdf" in content_type.lower():
             return ".pdf"
+        elif "text/html" in content_type.lower():
+            return ".html"
     
     return ".zip"  # Default to zip for FI documents
 
@@ -378,25 +404,44 @@ def unzip_if_needed(file_path: Path) -> List[Path]:
                 
                 zip_ref.extractall(extract_dir)
                 
-                # Search for PDFs recursively (including root level)
-                extracted_files = list(extract_dir.rglob("*.pdf"))
+                # Search for PDFs and HTML/XHTML files recursively (including root level)
+                extracted_files = (
+                    list(extract_dir.rglob("*.pdf")) + 
+                    list(extract_dir.rglob("*.html")) + 
+                    list(extract_dir.rglob("*.xhtml")) +
+                    list(extract_dir.rglob("*.htm"))
+                )
                 
                 # Also check root level explicitly
                 root_pdfs = [f for f in extract_dir.glob("*.pdf") if f.is_file()]
+                root_htmls = [f for f in extract_dir.glob("*.html") if f.is_file()]
+                root_xhtmls = [f for f in extract_dir.glob("*.xhtml") if f.is_file()]
+                root_htms = [f for f in extract_dir.glob("*.htm") if f.is_file()]
                 for pdf in root_pdfs:
                     if pdf not in extracted_files:
                         extracted_files.append(pdf)
+                for html in root_htmls:
+                    if html not in extracted_files:
+                        extracted_files.append(html)
+                for xhtml in root_xhtmls:
+                    if xhtml not in extracted_files:
+                        extracted_files.append(xhtml)
+                for htm in root_htms:
+                    if htm not in extracted_files:
+                        extracted_files.append(htm)
                 
                 # Debug: Show what we found
                 if extracted_files:
-                    print(f"📄 Found {len(extracted_files)} PDF file(s):")
-                    for pdf in extracted_files:
-                        print(f"   - {pdf.name} ({pdf.parent.relative_to(extract_dir)})")
+                    pdf_count = sum(1 for f in extracted_files if f.suffix.lower() == ".pdf")
+                    html_count = sum(1 for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"])
+                    print(f"📄 Found {len(extracted_files)} document file(s): {pdf_count} PDF(s), {html_count} HTML/XHTML(s)")
+                    for doc in extracted_files:
+                        print(f"   - {doc.name} ({doc.parent.relative_to(extract_dir)})")
                 else:
-                    # No PDFs found, list all files for debugging
+                    # No documents found, list all files for debugging
                     all_files = list(extract_dir.rglob("*"))
                     all_files = [f for f in all_files if f.is_file()]
-                    print(f"⚠️  No PDFs found in ZIP, but found {len(all_files)} other file(s):")
+                    print(f"⚠️  No PDF/HTML/XHTML files found in ZIP, but found {len(all_files)} other file(s):")
                     for f in all_files[:10]:
                         print(f"   - {f.name} ({f.suffix})")
                     if len(all_files) > 10:
@@ -474,6 +519,56 @@ def find_portfolio_section(text: str) -> str:
     # If no specific section found, return full text but prioritize pages with keywords
     print("⚠️  No specific portfolio section found, using full document")
     return text
+
+
+def extract_text_from_html(html_path: Path, debug: bool = False) -> str:
+    """
+    Extract text from HTML/XHTML file.
+    Returns text content.
+    """
+    try:
+        from bs4 import BeautifulSoup
+        
+        with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+            html_content = f.read()
+        
+        # Use lxml parser if available (better for XHTML), fallback to html.parser
+        try:
+            soup = BeautifulSoup(html_content, "lxml")
+        except:
+            soup = BeautifulSoup(html_content, "html.parser")
+        
+        # Remove script and style elements
+        for script in soup(["script", "style", "noscript"]):
+            script.decompose()
+        
+        # Get text
+        text = soup.get_text(separator="\n", strip=True)
+        
+        if debug:
+            print(f"\n📄 Sample of extracted HTML/XHTML text (first 500 chars):")
+            print("-" * 60)
+            print(text[:500])
+            print("-" * 60)
+        
+        return text
+    except ImportError:
+        print("⚠️  BeautifulSoup4 not installed. Install with: pip install beautifulsoup4")
+        # Fallback: basic text extraction
+        try:
+            with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            # Simple regex to extract text between tags
+            import re
+            text = re.sub(r'<[^>]+>', ' ', content)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+        except Exception as e:
+            print(f"⚠️  Error extracting text from HTML: {e}")
+            return ""
+    except Exception as e:
+        print(f"⚠️  Error reading HTML/XHTML: {e}")
+        return ""
 
 
 def extract_text_from_pdf(pdf_path: Path, debug: bool = False) -> str:
@@ -569,7 +664,7 @@ def extract_portfolio_companies_from_images(images: List[Image.Image]) -> List[D
         return []
     
     prompt = """You are analyzing a Swedish annual report or financial document. 
-Extract ALL portfolio companies, holdings, and investments from these document pages.
+Extract ONLY companies that are actually OWNED by the company whose report this is.
 
 Look specifically for sections titled:
 - "Portfolio" / "Portfölj"
@@ -586,14 +681,21 @@ Return a JSON array where each object contains:
 - "company_name": The full legal name of the portfolio company (e.g., "Ericsson AB", "Atlas Copco AB")
 - "ownership_percentage": Percentage owned (as a number, e.g., 22.5 for 22.5%), or null if not mentioned
 
-IMPORTANT:
-- Extract ALL companies mentioned in portfolio/holdings sections, even if ownership percentage is not specified
-- Look for company names in tables, lists, and text
+CRITICAL RULES:
+- ONLY extract companies that are clearly OWNED by the company in this report
+- DO NOT extract companies that are just mentioned, customers, suppliers, or competitors
+- DO NOT extract companies from sections about "Related Parties" unless they are clearly owned
+- Companies must be in portfolio/holdings/investments sections - not just mentioned elsewhere
+- If ownership percentage is missing, only include if clearly in a portfolio/holdings table
 - Company names often end with "AB", "AB publ", "AB (publ)", etc.
 - Include both direct and indirect holdings
-- If you see a table with company names and percentages, extract ALL rows - do not miss any companies
+- If you see a table with company names and percentages, extract ALL rows from that table
 - Read tables carefully, including multi-column tables
-- Check footnotes or additional pages for more companies
+
+IT IS PERFECTLY OKAY IF THE COMPANY OWNS NOTHING:
+- If no portfolio companies are found, return an empty array []
+- Do not make up or guess companies just to have results
+- Only extract companies that are clearly and explicitly listed as owned/invested in
 
 If no portfolio companies are found, return an empty array [].
 """
@@ -666,7 +768,7 @@ def extract_portfolio_companies(document_text: str) -> List[Dict[str, Any]]:
         return []
     
     prompt = """You are analyzing a Swedish annual report or financial document. 
-Extract ALL portfolio companies, holdings, and investments mentioned in this document.
+Extract ONLY companies that are actually OWNED by the company whose report this is.
 
 Look specifically for sections titled:
 - "Portfolio" / "Portfölj"
@@ -681,12 +783,20 @@ Return a JSON array where each object contains:
 - "company_name": The full legal name of the portfolio company (e.g., "Ericsson AB", "Atlas Copco AB")
 - "ownership_percentage": Percentage owned (as a number, e.g., 22.5 for 22.5%), or null if not mentioned
 
-IMPORTANT:
-- Extract ALL companies mentioned in portfolio/holdings sections, even if ownership percentage is not specified
-- Look for company names in tables, lists, and text
+CRITICAL RULES:
+- ONLY extract companies that are clearly OWNED by the company in this report
+- DO NOT extract companies that are just mentioned, customers, suppliers, or competitors
+- DO NOT extract companies from sections about "Related Parties" unless they are clearly owned
+- Companies must be in portfolio/holdings/investments sections - not just mentioned elsewhere
+- If ownership percentage is missing, only include if clearly in a portfolio/holdings table
 - Company names often end with "AB", "AB publ", "AB (publ)", etc.
 - Include both direct and indirect holdings
-- If you see a table with company names and percentages, extract all rows
+- If you see a table with company names and percentages, extract all rows from that table
+
+IT IS PERFECTLY OKAY IF THE COMPANY OWNS NOTHING:
+- If no portfolio companies are found, return an empty array []
+- Do not make up or guess companies just to have results
+- Only extract companies that are clearly and explicitly listed as owned/invested in
 
 If no portfolio companies are found, return an empty array [].
 
@@ -761,17 +871,39 @@ def process_document(url: str, organization_number: str) -> List[Dict[str, Any]]
             # Unzip if needed
             extracted_files = unzip_if_needed(file_path)
             
-            # Process first PDF found
+            # Process first PDF or HTML/XHTML found
             pdf_files = [f for f in extracted_files if f.suffix.lower() == ".pdf" and f.is_file()]
+            html_files = [f for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"] and f.is_file()]
             
-            if not pdf_files:
-                print("⚠️  No PDF files found in document")
+            if not pdf_files and not html_files:
+                print("⚠️  No PDF or HTML files found in document")
                 print(f"   Extracted files: {[str(f) for f in extracted_files]}")
                 return []
             
-            # Use first PDF
-            pdf_path = pdf_files[0]
-            print(f"📄 Processing PDF: {pdf_path.name}")
+            # Prefer PDF, fallback to HTML
+            if pdf_files:
+                doc_path = pdf_files[0]
+                doc_type = "PDF"
+                print(f"📄 Processing PDF: {doc_path.name}")
+            else:
+                doc_path = html_files[0]
+                doc_type = "HTML"
+                print(f"🌐 Processing HTML: {doc_path.name}")
+            
+            # Handle HTML files
+            if doc_type == "HTML":
+                document_text = extract_text_from_html(doc_path, debug=True)
+                if not document_text:
+                    print("⚠️  Could not extract text from HTML")
+                    return []
+                
+                # Use Gemini to extract portfolio from HTML text
+                print("🧠 Analyzing HTML content with Gemini...")
+                portfolio = extract_portfolio_companies(document_text)
+                return portfolio
+            
+            # Continue with PDF processing (existing code)
+            pdf_path = doc_path
             
             # Try to find portfolio section first
             portfolio_page = search_pdf_for_portfolio_section(pdf_path, max_pages=30)

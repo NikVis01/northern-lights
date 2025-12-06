@@ -30,6 +30,8 @@ def upsert_company(company_data: Dict[str, Any]) -> None:
     WITH c
     WHERE $vector IS NOT NULL
     SET c.vector = $vector
+    WITH c
+    SET c.portfolio = COALESCE($portfolio, [])
     """
 
     # Ensure optional fields are present in params or handled
@@ -42,6 +44,7 @@ def upsert_company(company_data: Dict[str, Any]) -> None:
         "sectors": company_data.get("sectors", []),
         "cluster_id": company_data.get("cluster_id"),
         "vector": company_data.get("vector"),
+        "portfolio": company_data.get("portfolio"),
     }
 
     driver = get_driver()
@@ -51,19 +54,35 @@ def upsert_company(company_data: Dict[str, Any]) -> None:
 
 def get_company(company_id: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieve a Company node by company_id.
+    Retrieve a Company or Fund node by company_id.
     """
     query = """
-    MATCH (c:Company {company_id: $company_id})
-    RETURN c
+    MATCH (n)
+    WHERE n.company_id = $company_id AND ('Company' IN labels(n) OR 'Fund' IN labels(n))
+    RETURN n
     """
     driver = get_driver()
     with driver.session() as session:
         result = session.run(query, company_id=company_id)
         record = result.single()
         if record:
-            return dict(record["c"])
+            return dict(record["n"])
         return None
+
+
+def convert_company_to_fund(company_id: str) -> None:
+    """
+    Convert a Company node to Fund by adding Fund label.
+    Keeps Company label so node can be found by both queries.
+    """
+    query = """
+    MATCH (n {company_id: $company_id})
+    WHERE 'Company' IN labels(n)
+    SET n:Fund
+    """
+    driver = get_driver()
+    with driver.session() as session:
+        session.run(query, company_id=company_id)
 
 
 def search_similar_companies(

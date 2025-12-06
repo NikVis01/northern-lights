@@ -17,11 +17,21 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# Install system dependencies for pdf2image (poppler-utils) and Playwright
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for Cloud Run
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/appuser/.local
+
+# Install Playwright browsers (as appuser)
+USER appuser
+RUN playwright install chromium
+USER root
 
 # Copy application code
 COPY app/ ./app/

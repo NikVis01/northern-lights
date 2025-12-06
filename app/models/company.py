@@ -8,6 +8,7 @@ class EntityRef(BaseModel):
     entity_id: str
     name: str
     entity_type: str = "company"  # company | fund
+    ownership_pct: Optional[float] = None
 
 
 class CompanyBase(BaseModel):
