@@ -5,3 +5,4 @@ __pycache__
 
 node_modules/
 data_pipeline/requirements.txt
+frontend/node_modules

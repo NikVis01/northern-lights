@@ -36,6 +36,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For hackathon/dev, allow all. stricter in prod.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 try:
     app.include_router(companies.router, prefix=f"/{settings.api_version}/companies", tags=["companies"])
     app.include_router(investors.router, prefix=f"/{settings.api_version}/investors", tags=["investors"])
