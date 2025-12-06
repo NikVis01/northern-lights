@@ -28,17 +28,18 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/appuser/.local
 
+# Set PATH to include user local bin before switching users
+ENV PATH=/home/appuser/.local/bin:$PATH
+
 # Install Playwright browsers (as appuser)
 USER appuser
-RUN playwright install chromium
+RUN python -m playwright install chromium
 USER root
 
 # Copy application code
 COPY app/ ./app/
 COPY pyproject.toml* ./
 
-# Set PATH to include user local bin
-ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONPATH=/app
 
 # Change ownership
