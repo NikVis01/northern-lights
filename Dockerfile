@@ -24,12 +24,12 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
-COPY src/ ./src/
+COPY app/ ./app/
 COPY pyproject.toml* ./
 
 # Set PATH to include user local bin
 ENV PATH=/home/appuser/.local/bin:$PATH
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 
 # Change ownership
 RUN chown -R appuser:appuser /app
@@ -37,8 +37,8 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# Set working directory to src for uvicorn
-WORKDIR /app/src
+# Set working directory
+WORKDIR /app
 
 # Expose port (Cloud Run uses PORT env var)
 ENV PORT=8080

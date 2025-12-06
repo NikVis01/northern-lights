@@ -1,20 +1,20 @@
 import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
-from src.app.services.graph_service import GraphService
-from src.app.models.company import CompanyOut
-from src.app.models.investor import InvestorOut
+from app.services.graph_service import GraphService
+from app.models.company import CompanyOut
+from app.models.investor import InvestorOut
 
 
 @pytest.fixture
 def mock_driver():
-    with patch("src.app.services.graph_service.get_driver") as mock:
+    with patch("app.services.graph_service.get_driver") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_sentence_transformer():
-    with patch("src.app.services.graph_service.SentenceTransformer") as mock:
+    with patch("app.services.graph_service.SentenceTransformer") as mock:
         yield mock
 
 
