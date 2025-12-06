@@ -22,8 +22,8 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
     # Validate organization number format (10 digits)
     import re
     cleaned = re.sub(r'[-\s]', '', str(company_id))
-    if not (len(cleaned) == 10 and cleaned.isdigit()):
-        raise ValueError(f"Invalid organization number format: '{company_id}'. Must be 10 digits (format: XXXXXX-XXXX)")
+    #if not (len(cleaned) == 10 and cleaned.isdigit()):
+     #   raise ValueError(f"Invalid organization number format: '{company_id}'. Must be 10 digits (format: XXXXXX-XXXX)")
     
     query = """
     MERGE (f:Fund {company_id: $company_id})

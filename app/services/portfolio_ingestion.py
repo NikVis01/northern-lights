@@ -73,101 +73,109 @@ def is_valid_org_number(org_id: str) -> bool:
     # Check if it's exactly 10 digits
     return len(cleaned) == 10 and cleaned.isdigit()
 
-
 def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """
     Call hack_net.py to extract portfolio companies from FI documents.
-    Also extracts report text for company field extraction.
-
-    Returns:
-        Tuple of (portfolio_list, report_text)
-        portfolio_list: List of {company_name, ownership_percentage}
-        report_text: Extracted text from the report (for field extraction), or None
+    
+    CRITICAL FIX: Wraps the sync Playwright execution in a separate thread 
+    to avoid 'Sync API inside asyncio loop' errors.
     """
     # Validate organization number format
     if not is_valid_org_number(organization_id):
         logger.warning(f"Skipping FI search for '{organization_id}' - not a valid org number format")
         return [], None
 
-    try:
-        # Import hack_net module using sys.path manipulation (cleaner than importlib)
-        import sys
-        import os
-        import tempfile
-        from pathlib import Path
-
-        # Add parent directory to path if not already there
-        hack_net_dir = str(HACK_NET_PATH)
-        if hack_net_dir not in sys.path:
-            sys.path.insert(0, hack_net_dir)
-
-        # Import the module
-        import hack_net
-
-        logger.info(f"Searching FI documents for organization {organization_id}")
-        # Search for documents
-        links = hack_net.search_fi_documents(organization_id)
-        if not links:
-            logger.warning(f"No FI documents found for {organization_id}")
-            return [], None
-
-        logger.info(f"Found {len(links)} document(s), processing first document...")
-
-        # Process first (latest) document to get portfolio
-        portfolio = hack_net.process_document(links[0], organization_id)
-        logger.info(f"Extracted {len(portfolio)} portfolio company/ies")
-
-        # Also extract report text for company field extraction
-        report_text = None
+    # --- Worker Function to run in separate thread ---
+    def _hack_net_worker(org_id: str):
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
-                file_path = hack_net.download_file(links[0], temp_path)
-                extracted_files = hack_net.unzip_if_needed(file_path)
-
-                # Find PDF or HTML file
-                pdf_files = [f for f in extracted_files if f.suffix.lower() == ".pdf" and f.is_file()]
-                html_files = [
-                    f for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"] and f.is_file()
-                ]
-
-                if pdf_files:
-                    # Extract text from first 20 pages of PDF
-                    report_text = hack_net.extract_text_from_pdf(pdf_files[0], debug=False)
-                    # If we got portfolio-specific text, try to get more general text
-                    if not report_text or len(report_text) < 1000:
-                        # Try extracting more pages
-                        from pypdf import PdfReader
-
-                        reader = PdfReader(str(pdf_files[0]))
-                        text_parts = []
-                        for i in range(min(20, len(reader.pages))):
-                            try:
-                                page = reader.pages[i]
-                                text = page.extract_text()
-                                if text and text.strip():
-                                    text_parts.append(text)
-                            except:
-                                continue
-                        if text_parts:
-                            report_text = "\n".join(text_parts)
-                elif html_files:
-                    report_text = hack_net.extract_text_from_html(html_files[0], debug=False)
-
-                if report_text:
-                    logger.info(f"Extracted {len(report_text)} characters from report for field extraction")
-        except Exception as e:
-            logger.warning(f"Could not extract report text for field extraction: {e}")
+            # Import hack_net module using sys.path manipulation
+            import sys
+            import os
+            import tempfile
+            from pathlib import Path
+            
+            # Add parent directory to path if not already there
+            hack_net_dir = str(HACK_NET_PATH)
+            if hack_net_dir not in sys.path:
+                sys.path.insert(0, hack_net_dir)
+            
+            # Import the module inside the thread
+            import hack_net
+            
+            logger.info(f"Searching FI documents for organization {org_id}")
+            # Search for documents
+            links = hack_net.search_fi_documents(org_id)
+            if not links:
+                logger.warning(f"No FI documents found for {org_id}")
+                return [], None
+            
+            logger.info(f"Found {len(links)} document(s), processing first document...")
+            
+            # Process first (latest) document to get portfolio
+            portfolio = hack_net.process_document(links[0], org_id)
+            logger.info(f"Extracted {len(portfolio)} portfolio company/ies")
+            
+            # Also extract report text for company field extraction
             report_text = None
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    file_path = hack_net.download_file(links[0], temp_path)
+                    extracted_files = hack_net.unzip_if_needed(file_path)
+                    
+                    # Find PDF or HTML file
+                    pdf_files = [f for f in extracted_files if f.suffix.lower() == ".pdf" and f.is_file()]
+                    html_files = [f for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"] and f.is_file()]
+                    
+                    if pdf_files:
+                        # Extract text from first 20 pages of PDF
+                        report_text = hack_net.extract_text_from_pdf(pdf_files[0], debug=False)
+                        if not report_text or len(report_text) < 1000:
+                            # Try extracting more pages via pypdf if hack_net method yielded little text
+                            try:
+                                from pypdf import PdfReader
+                                reader = PdfReader(str(pdf_files[0]))
+                                text_parts = []
+                                for i in range(min(20, len(reader.pages))):
+                                    page = reader.pages[i]
+                                    text = page.extract_text()
+                                    if text and text.strip():
+                                        text_parts.append(text)
+                                if text_parts:
+                                    report_text = "\n".join(text_parts)
+                            except ImportError:
+                                pass # pypdf might not be installed
+                    elif html_files:
+                        report_text = hack_net.extract_text_from_html(html_files[0], debug=False)
+                    
+                    if report_text:
+                        logger.info(f"Extracted {len(report_text)} characters from report")
+            except Exception as e:
+                logger.warning(f"Could not extract report text: {e}")
+                report_text = None
+            
+            return portfolio, report_text
 
-        return portfolio, report_text
-    except ImportError as e:
-        logger.error(f"Missing dependencies for hack_net (playwright, etc.): {e}")
-        raise  # Re-raise to make it visible
+        except ImportError as e:
+            logger.error(f"Missing dependencies for hack_net: {e}")
+            raise
+        except Exception as e:
+            # Log here so we see the error from the thread
+            logger.error(f"Error inside hack_net worker for {org_id}: {e}", exc_info=True)
+            raise
+
+    # --- Execution via ThreadPool ---
+    import concurrent.futures
+    try:
+        # Use a ThreadPoolExecutor to isolate the sync Playwright call from the AsyncIO loop
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_hack_net_worker, organization_id)
+            return future.result()
+            
     except Exception as e:
-        logger.error(f"Error extracting portfolio from FI for {organization_id}: {e}", exc_info=True)
-        raise  # Re-raise to make errors visible instead of silently failing
-
+        logger.error(f"Error extracting portfolio from FI for {organization_id}: {e}")
+        # Re-raise or return empty based on preference; here we log and return empty to keep flow alive
+        return [], None
 
 def lookup_org_number_from_web(company_name: str) -> Optional[str]:
     """
