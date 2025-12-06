@@ -14,6 +14,8 @@ _driver = None
 def get_driver():
     global _driver
     if _driver is None:
+        if not URI or not AUTH[0] or not AUTH[1]:
+            raise ValueError("Neo4j credentials not configured. Set NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD environment variables.")
         _driver = GraphDatabase.driver(URI, auth=AUTH)
     return _driver
 

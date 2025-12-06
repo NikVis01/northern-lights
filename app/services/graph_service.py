@@ -7,8 +7,21 @@ from app.models.investor import InvestorOut
 
 class GraphService:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.model = SentenceTransformer(model_name)
-        self.driver = get_driver()
+        self.model_name = model_name
+        self._model = None
+        self._driver = None
+    
+    @property
+    def model(self):
+        if self._model is None:
+            self._model = SentenceTransformer(self.model_name)
+        return self._model
+    
+    @property
+    def driver(self):
+        if self._driver is None:
+            self._driver = get_driver()
+        return self._driver
 
     def _generate_embedding_text(self, node: CompanyOut | InvestorOut) -> str:
         """

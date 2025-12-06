@@ -1,16 +1,33 @@
+import logging
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from app.config import get_settings
 from app.routers import companies, investors, relationships, search
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    logger.info("Starting Northern Lights API...")
+    try:
+        settings = get_settings()
+        logger.info(f"API version: {settings.api_version}")
+        yield
+    except Exception as e:
+        logger.error(f"Error during startup: {e}", exc_info=True)
+        raise
+    finally:
+        logger.info("Shutting down Northern Lights API...")
 
 
-settings = get_settings()
+try:
+    settings = get_settings()
+except Exception as e:
+    logger.error(f"Failed to load settings: {e}", exc_info=True)
+    raise
 
 app = FastAPI(
     title="Northern Lights API",
@@ -19,12 +36,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(companies.router, prefix=f"/{settings.api_version}/companies", tags=["companies"])
-app.include_router(investors.router, prefix=f"/{settings.api_version}/investors", tags=["investors"])
-app.include_router(relationships.router, prefix=f"/{settings.api_version}/relationships", tags=["relationships"])
-app.include_router(search.router, prefix=f"/{settings.api_version}/search", tags=["search"])
+try:
+    app.include_router(companies.router, prefix=f"/{settings.api_version}/companies", tags=["companies"])
+    app.include_router(investors.router, prefix=f"/{settings.api_version}/investors", tags=["investors"])
+    app.include_router(relationships.router, prefix=f"/{settings.api_version}/relationships", tags=["relationships"])
+    app.include_router(search.router, prefix=f"/{settings.api_version}/search", tags=["search"])
+    logger.info("All routers registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register routers: {e}", exc_info=True)
+    raise
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.api_version}

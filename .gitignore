@@ -1,13 +1,3 @@
 .env
 __pycache__
 .ruff_cache
-data_pipeline/requirements.txt
-
-
-
-## Frontend
-frontend/node_modules
-frontend/.vscode
-frontend/.ruff_cache
-frontend/.next
-frontend/.vite
