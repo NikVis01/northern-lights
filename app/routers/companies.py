@@ -70,7 +70,9 @@ async def ingest_company(
             "status": "completed",
             "organization_id": result["organization_id"],
             "portfolio_companies_found": len(result["portfolio"]),
-            "companies_processed": result["companies_processed"]
+            "companies_processed": result["companies_processed"],
+            "investors_discovered": result.get("investors_discovered", 0),
+            "investors_linked": result.get("investors_linked", 0)
         }
     except ImportError as e:
         return {
