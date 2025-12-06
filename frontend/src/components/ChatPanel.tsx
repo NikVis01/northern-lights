@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2 } from "lucide-react";
+import { Send, Bot, User, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
 
 interface Message {
   id: string;
@@ -14,6 +15,7 @@ interface Message {
 
 const ChatPanel = () => {
   const { t } = useLanguage();
+  const { isHealthy } = useBackendHealth();
   
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -25,6 +27,7 @@ const ChatPanel = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Update initial message when language changes
@@ -45,9 +48,24 @@ const ChatPanel = () => {
     }
   }, [messages]);
 
+  // Clear error when backend comes back online
+  useEffect(() => {
+    if (isHealthy && hasError) {
+      console.log("Backend is back online, clearing chat error...");
+      setHasError(false);
+    }
+  }, [isHealthy, hasError]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    // Check backend health before submitting
+    if (!isHealthy) {
+      console.error("Cannot submit message: Backend is not available");
+      setHasError(true);
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -60,29 +78,37 @@ const ChatPanel = () => {
     const currentInput = input.trim();
     setInput("");
     setIsLoading(true);
+    setHasError(false);
 
+    // TODO: Replace with actual API call
+    // For now, simulating potential errors
     setTimeout(() => {
+      try {
+        const responses = [
+          t("queuing", { input: currentInput }),
+          t("foundEntity") as string,
+          t("ingestionComplete") as string,
+        ];
 
-      const responses = [
-        t("queuing", { input: currentInput }),
-        t("foundEntity") as string,
-        t("ingestionComplete") as string,
-      ];
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: responses[Math.floor(Math.random() * responses.length)],
+          timestamp: new Date(),
+        };
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: responses[Math.floor(Math.random() * responses.length)],
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      setIsLoading(false);
+        setMessages((prev) => [...prev, assistantMessage]);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error processing message:", error);
+        setHasError(true);
+        setIsLoading(false);
+      }
     }, 1200);
   };
 
   return (
-    <div className="flex flex-col h-full glass-card rounded-lg overflow-hidden">
+    <div className="flex flex-col h-full glass-card rounded-lg overflow-hidden relative">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50">
         <div className="w-2 h-2 rounded-full bg-foreground/60" />
@@ -90,6 +116,21 @@ const ChatPanel = () => {
           {t("ingestionAgent") as string}
         </span>
       </div>
+
+      {/* Error Overlay */}
+      {hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg z-50">
+          <div className="flex flex-col items-center gap-3 text-center px-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-destructive" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">Connection error</h3>
+              <p className="text-xs text-muted-foreground">Unable to process request</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-3" ref={scrollRef}>

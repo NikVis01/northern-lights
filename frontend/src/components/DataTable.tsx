@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Building2, Landmark, Users, Search, ArrowUpDown, ChevronDown, ExternalLink } from "lucide-react";
+import { Building2, Landmark, Users, Search, ArrowUpDown, ChevronDown, ExternalLink, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
 
 type EntityType = "company" | "fund";
 type FilterType = "all" | "companies" | "investors";
@@ -49,15 +50,18 @@ type SortDirection = "asc" | "desc";
 const DataTable = () => {
   const { t } = useLanguage();
   const { selectedEntityId, setSelectedEntityId } = useSelectedEntity();
+  const { isHealthy } = useBackendHealth();
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     const fetchEntities = async () => {
       try {
+        setHasError(false);
         const response = await fetch("/api/v1/search/all", {
           headers: {
             "access_token": "dev"
@@ -89,14 +93,67 @@ const DataTable = () => {
             };
           });
           setEntities(processedEntities);
+        } else {
+          setHasError(true);
         }
       } catch (error) {
         console.error("Failed to fetch entities:", error);
+        setHasError(true);
       }
     };
 
     fetchEntities();
   }, []);
+
+  // Refetch when backend comes back online
+  useEffect(() => {
+    if (isHealthy && hasError) {
+      console.log("Backend is back online, refetching table data...");
+      const fetchEntities = async () => {
+        try {
+          setHasError(false);
+          const response = await fetch("/api/v1/search/all", {
+            headers: {
+              "access_token": "dev"
+            }
+          });
+          
+          if (response.ok) {
+            const { nodes, links } = await response.json();
+            
+            const nodeMap = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
+            
+            const processedEntities = nodes.map((node: any) => {
+              const nodeLinks = links.filter((l: any) => l.target === node.id);
+              const ownership = nodeLinks.map((l: any) => {
+                const sourceName = nodeMap.get(l.source)?.name || "Unknown";
+                return `${sourceName} (${l.ownership}%)`;
+              }).join(", ");
+              
+              return {
+                id: node.id,
+                name: node.name,
+                type: node.type,
+                orgNumber: node.orgNumber || "-",
+                sector: node.sector && node.sector !== "Unknown" ? node.sector : "—",
+                cluster: node.cluster || 0,
+                country: node.country || "Unknown",
+                ownership: ownership || undefined
+              };
+            });
+            setEntities(processedEntities);
+          } else {
+            setHasError(true);
+          }
+        } catch (error) {
+          console.error("Failed to fetch entities:", error);
+          setHasError(true);
+        }
+      };
+
+      fetchEntities();
+    }
+  }, [isHealthy, hasError]);
 
   const filteredData = useMemo(() => {
     let data = entities;
@@ -157,7 +214,7 @@ const DataTable = () => {
   };
 
   return (
-    <div className="flex flex-col h-full glass-card rounded-lg overflow-hidden">
+    <div className="flex flex-col h-full glass-card rounded-lg overflow-hidden relative">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 p-3 border-b border-border/50">
         <div className="flex items-center gap-2">
@@ -199,6 +256,21 @@ const DataTable = () => {
           />
         </div>
       </div>
+
+      {/* Error Overlay */}
+      {hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg z-50">
+          <div className="flex flex-col items-center gap-3 text-center px-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-destructive" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">Connection error</h3>
+              <p className="text-xs text-muted-foreground">Unable to load table data</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <ScrollArea className="flex-1">

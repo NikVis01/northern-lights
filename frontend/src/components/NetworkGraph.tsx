@@ -1,10 +1,11 @@
 import { useCallback, useRef, useEffect, useState } from "react";
 import ForceGraph2D, { ForceGraphMethods } from "react-force-graph-2d";
-import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { useTheme } from "./ThemeProvider";
 import { useSelectedEntity } from "@/contexts/SelectedEntityContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
 
 interface Node {
   id: string;
@@ -40,17 +41,20 @@ const NetworkGraph = () => {
   const { theme } = useTheme();
   const { selectedEntityId, setSelectedEntityId } = useSelectedEntity();
   const { t } = useLanguage();
+  const { isHealthy } = useBackendHealth();
   
   // Determine if we're in dark mode
   const [isDark, setIsDark] = useState(true);
 
   // Graph data state
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
+  const [hasError, setHasError] = useState(false);
 
   // Fetch graph data
   useEffect(() => {
     const fetchGraphData = async () => {
       try {
+        setHasError(false);
         // Use proxy URL to avoid CORS
         const response = await fetch("/api/v1/search/all", {
           headers: {
@@ -60,6 +64,7 @@ const NetworkGraph = () => {
         
         if (!response.ok) {
           console.error("Failed to fetch graph data");
+          setHasError(true);
           return;
         }
 
@@ -67,11 +72,43 @@ const NetworkGraph = () => {
         setGraphData(data);
       } catch (error) {
         console.error("Error fetching graph data:", error);
+        setHasError(true);
       }
     };
 
     fetchGraphData();
   }, []);
+
+  // Refetch when backend comes back online
+  useEffect(() => {
+    if (isHealthy && hasError) {
+      console.log("Backend is back online, refetching graph data...");
+      const fetchGraphData = async () => {
+        try {
+          setHasError(false);
+          const response = await fetch("/api/v1/search/all", {
+            headers: {
+              "access_token": "dev"
+            }
+          });
+          
+          if (!response.ok) {
+            console.error("Failed to fetch graph data");
+            setHasError(true);
+            return;
+          }
+
+          const data = await response.json();
+          setGraphData(data);
+        } catch (error) {
+          console.error("Error fetching graph data:", error);
+          setHasError(true);
+        }
+      };
+
+      fetchGraphData();
+    }
+  }, [isHealthy, hasError]);
   
   useEffect(() => {
     const checkDarkMode = () => {
@@ -228,6 +265,8 @@ const NetworkGraph = () => {
           linkDirectionalParticleWidth={2}
           linkDirectionalParticleSpeed={0.003}
           linkDirectionalParticleColor={() => particleColor}
+          linkDirectionalArrowLength={3.5}
+          linkDirectionalArrowRelPos={0.5}
           backgroundColor="transparent"
           onNodeHover={(node) => setHoveredNode(node as Node | null)}
           onNodeClick={handleNodeClick}
@@ -236,6 +275,21 @@ const NetworkGraph = () => {
           d3VelocityDecay={0.3}
         />
       </div>
+
+      {/* Error Overlay */}
+      {hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg z-50">
+          <div className="flex flex-col items-center gap-3 text-center px-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-destructive" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">Connection error</h3>
+              <p className="text-xs text-muted-foreground">Unable to load graph data</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="absolute top-3 right-3 flex flex-col gap-1">
@@ -260,6 +314,11 @@ const NetworkGraph = () => {
           <div className="w-2 h-2 rounded-full bg-muted-foreground/60" />
           <span>{t("investors") as string}</span>
         </div>
+      </div>
+      
+      {/* Info Tip */}
+      <div className="absolute bottom-3 right-3 text-[10px] text-muted-foreground/60 font-mono pointer-events-none select-none italic">
+        Moving particles indicate ownership
       </div>
 
       {/* Hover Info */}

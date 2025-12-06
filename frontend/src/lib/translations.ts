@@ -84,7 +84,9 @@ export const translations = {
     // Data Table (Hub)
     allEntities: "All Entities",
     companies: "Companies",
+    company: "Company",
     investors: "Investors",
+    fund: "Fund",
     results: "results",
     search: "Search...",
     type: "Type",
@@ -185,7 +187,9 @@ export const translations = {
     // Data Table (Hub)
     allEntities: "Alla enheter",
     companies: "Företag",
+    company: "Företag",
     investors: "Investerare",
+    fund: "Fond",
     results: "resultat",
     search: "Sök...",
     type: "Typ",

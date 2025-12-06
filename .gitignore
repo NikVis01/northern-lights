@@ -12,3 +12,6 @@ frontend/.vscode
 frontend/.ruff_cache
 frontend/.next
 frontend/.vite
+
+# Build output
+frontend/dist

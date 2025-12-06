@@ -1,4 +1,4 @@
-import { Activity, User, Settings, LogOut, Globe, ChevronDown, Check } from "lucide-react";
+import { Activity, User, Settings, LogOut, Globe, ChevronDown, Check, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -10,15 +10,33 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "./ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 import { ThemeToggle } from "./ThemeToggle";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
 
 const Header = () => {
   const { language, setLanguage, t } = useLanguage();
+  const { isHealthy, lastChecked } = useBackendHealth();
 
   const handleLogout = () => {
     // TODO: Implement actual logout with Supabase
     console.log("Logout clicked");
+  };
+
+  const formatTimestamp = (date: Date | null) => {
+    if (!date) return "";
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      hour12: false 
+    });
   };
 
   return (
@@ -44,10 +62,37 @@ const Header = () => {
         </nav>
 
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-            <Activity className="w-3 h-3" />
-            <span className="font-mono">{t("live") as string}</span>
-          </div>
+          {/* Connection Status */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`hidden sm:flex items-center gap-2 text-xs font-mono cursor-help ${isHealthy ? "text-green-500" : "text-destructive"}`}>
+                  {isHealthy ? (
+                    <>
+                      <Activity className="w-3 h-3" />
+                      <span>LIVE</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-3 h-3" />
+                      <span>ERROR</span>
+                    </>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isHealthy ? (
+                  <p className="text-xs">
+                    Connected: {formatTimestamp(lastChecked)} last updated
+                  </p>
+                ) : (
+                  <p className="text-xs">
+                    Couldn't connect to backend, please contact administration
+                  </p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           
           <ThemeToggle />
 

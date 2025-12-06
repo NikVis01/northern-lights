@@ -22,6 +22,13 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         logger.info("Shutting down Northern Lights API...")
+        # Clean up GDS session if it was created
+        try:
+            from app.db.neo4j_client import close_gds_session
+
+            close_gds_session()
+        except Exception as e:
+            logger.warning(f"Error closing GDS session: {e}")
 
 
 try:
