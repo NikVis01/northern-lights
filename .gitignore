@@ -14,6 +14,8 @@ frontend/.vscode
 frontend/.ruff_cache
 frontend/.next
 frontend/.vite
+.DS_Store
+app/services/.DS_Store
 
 # Build output
 frontend/dist
