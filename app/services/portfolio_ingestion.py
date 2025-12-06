@@ -13,6 +13,7 @@ HACK_NET_PATH = Path(__file__).parent.parent.parent / "data_pipeline" / "illegal
 
 from app.db.queries import company_queries, relationship_queries, investor_queries
 from app.models import EntityRef
+from app.services.company_data_extraction import extract_company_fields
 
 logger = logging.getLogger(__name__)
 
@@ -59,22 +60,27 @@ def is_valid_org_number(org_id: str) -> bool:
     return len(cleaned) == 10 and cleaned.isdigit()
 
 
-def extract_portfolio_from_fi(organization_id: str) -> List[Dict[str, Any]]:
+def extract_portfolio_from_fi(organization_id: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """
     Call hack_net.py to extract portfolio companies from FI documents.
-    Returns list of {company_name, ownership_percentage}.
+    Also extracts report text for company field extraction.
     
-    Only works with valid Swedish organization numbers (10 digits).
+    Returns:
+        Tuple of (portfolio_list, report_text)
+        portfolio_list: List of {company_name, ownership_percentage}
+        report_text: Extracted text from the report (for field extraction), or None
     """
     # Validate organization number format
     if not is_valid_org_number(organization_id):
         logger.warning(f"Skipping FI search for '{organization_id}' - not a valid org number format")
-        return []
+        return [], None
     
     try:
         # Import hack_net module using sys.path manipulation (cleaner than importlib)
         import sys
         import os
+        import tempfile
+        from pathlib import Path
         
         # Add parent directory to path if not already there
         hack_net_dir = str(HACK_NET_PATH)
@@ -89,13 +95,55 @@ def extract_portfolio_from_fi(organization_id: str) -> List[Dict[str, Any]]:
         links = hack_net.search_fi_documents(organization_id)
         if not links:
             logger.warning(f"No FI documents found for {organization_id}")
-            return []
+            return [], None
         
         logger.info(f"Found {len(links)} document(s), processing first document...")
-        # Process first (latest) document
+        
+        # Process first (latest) document to get portfolio
         portfolio = hack_net.process_document(links[0], organization_id)
         logger.info(f"Extracted {len(portfolio)} portfolio company/ies")
-        return portfolio
+        
+        # Also extract report text for company field extraction
+        report_text = None
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                file_path = hack_net.download_file(links[0], temp_path)
+                extracted_files = hack_net.unzip_if_needed(file_path)
+                
+                # Find PDF or HTML file
+                pdf_files = [f for f in extracted_files if f.suffix.lower() == ".pdf" and f.is_file()]
+                html_files = [f for f in extracted_files if f.suffix.lower() in [".html", ".xhtml", ".htm"] and f.is_file()]
+                
+                if pdf_files:
+                    # Extract text from first 20 pages of PDF
+                    report_text = hack_net.extract_text_from_pdf(pdf_files[0], debug=False)
+                    # If we got portfolio-specific text, try to get more general text
+                    if not report_text or len(report_text) < 1000:
+                        # Try extracting more pages
+                        from pypdf import PdfReader
+                        reader = PdfReader(str(pdf_files[0]))
+                        text_parts = []
+                        for i in range(min(20, len(reader.pages))):
+                            try:
+                                page = reader.pages[i]
+                                text = page.extract_text()
+                                if text and text.strip():
+                                    text_parts.append(text)
+                            except:
+                                continue
+                        if text_parts:
+                            report_text = "\n".join(text_parts)
+                elif html_files:
+                    report_text = hack_net.extract_text_from_html(html_files[0], debug=False)
+                
+                if report_text:
+                    logger.info(f"Extracted {len(report_text)} characters from report for field extraction")
+        except Exception as e:
+            logger.warning(f"Could not extract report text for field extraction: {e}")
+            report_text = None
+        
+        return portfolio, report_text
     except ImportError as e:
         logger.error(f"Missing dependencies for hack_net (playwright, etc.): {e}")
         raise  # Re-raise to make it visible
@@ -169,37 +217,45 @@ Organization number:"""
         return None
 
 
-def lookup_or_create_company(company_name: str) -> str:
+def lookup_or_create_company(company_name: str) -> Optional[str]:
     """
     Look up company by name in Neo4j, or create with real org number if found via web search.
-    Returns organization_id (company_id in DB).
+    Returns organization_id (company_id in DB) or None if no valid org number found.
+    
+    IMPORTANT: Only creates companies with valid Swedish organization numbers.
+    Does NOT create placeholder companies with invalid IDs.
     """
     # First, try to find real org number via web search
     org_number = lookup_org_number_from_web(company_name)
     
-    if org_number and is_valid_org_number(org_number):
-        # Use real org number
-        org_id = org_number
-        logger.info(f"Using real org number {org_id} for {company_name}")
-    else:
-        # Fallback to placeholder
-        org_id = company_name.replace(" ", "").replace("AB", "").upper()[:10]
-        logger.warning(f"Using placeholder ID {org_id} for {company_name} (no org number found)")
+    if not org_number or not is_valid_org_number(org_number):
+        logger.warning(f"Could not find valid organization number for '{company_name}'. Skipping company creation.")
+        return None
     
-    # Try to get existing company
+    # Validate the org number before proceeding
+    org_id = org_number
+    logger.info(f"Using real org number {org_id} for {company_name}")
+    
+    # Check if company already exists
     existing = company_queries.get_company(org_id)
     if existing:
         return existing.get("company_id", org_id)
     
-    # Create company node
-    company_queries.upsert_company({
+    # Extract company fields from web search before creating
+    logger.info(f"Extracting company fields for {company_name} ({org_id})")
+    extracted_fields = extract_company_fields(company_name, org_id, report_text=None)
+    
+    # Create company node with real org number and extracted fields
+    company_data = {
         "company_id": org_id,
         "name": company_name,
         "country_code": "SE",
         "description": "",
         "mission": "",
         "sectors": [],
-    })
+    }
+    company_data.update(extracted_fields)  # Merge extracted fields
+    company_queries.upsert_company(company_data)
     
     return org_id
 
@@ -238,8 +294,13 @@ def process_portfolio_companies(
         if not company_name:
             continue
         
-        # Look up or create company
+        # Look up or create company (only with valid org number)
         target_org_id = lookup_or_create_company(company_name)
+        
+        # Skip if no valid org number found
+        if not target_org_id:
+            logger.warning(f"Skipping company '{company_name}' - no valid organization number found")
+            continue
         
         # Skip self-ownership
         if source_org_id == target_org_id:
@@ -257,6 +318,27 @@ def process_portfolio_companies(
             properties=properties
         )
         
+        # Extract company fields from report and web for this portfolio company (daughter company)
+        # This should happen for ALL portfolio companies, not just those with their own portfolios
+        logger.info(f"Extracting company fields for portfolio company {target_org_id} ({company_name})")
+        
+        # Try to get report text for this portfolio company
+        portfolio_data_recursive, report_text_recursive = extract_portfolio_from_fi(target_org_id)
+        
+        # Extract fields from both report and web search
+        extracted_fields = extract_company_fields(company_name, target_org_id, report_text_recursive)
+        
+        # Update the company node with extracted fields
+        if extracted_fields:
+            target_company = company_queries.get_company(target_org_id) or {}
+            target_company.update(extracted_fields)
+            target_company["company_id"] = target_org_id
+            target_company["name"] = company_name
+            if "country_code" not in target_company or not target_company["country_code"]:
+                target_company["country_code"] = "SE"
+            company_queries.upsert_company(target_company)
+            logger.info(f"Updated portfolio company {target_org_id} with extracted fields: {list(extracted_fields.keys())}")
+        
         # Create EntityRef
         entity_refs.append(EntityRef(
             entity_id=target_org_id,
@@ -265,48 +347,39 @@ def process_portfolio_companies(
             ownership_pct=ownership_pct
         ))
         
-        # Recursively process this portfolio company
-        if target_org_id not in visited:
-            portfolio_data_recursive = extract_portfolio_from_fi(target_org_id)
-            if portfolio_data_recursive:
-                # Process the recursive portfolio
-                recursive_entities = process_portfolio_companies(
-                    target_org_id,
-                    portfolio_data_recursive,
-                    visited
-                )
-                
-                # If this company has a portfolio (found in FI docs), convert it to Fund
-                # Use portfolio_data_recursive check, not recursive_entities, because
-                # recursive_entities might be empty if all items were already visited
-                logger.info(f"Company {target_org_id} has portfolio - converting to Fund")
-                company_queries.convert_company_to_fund(target_org_id)
-                # Update as Fund with portfolio data, preserving all existing fields
-                portfolio_data_for_storage = [
-                    {
-                        "entity_id": e.entity_id,
-                        "name": e.name,
-                        "entity_type": e.entity_type,
-                        "ownership_pct": e.ownership_pct
-                    }
-                    for e in recursive_entities
-                ]
-                target_company = company_queries.get_company(target_org_id)
-                if target_company:
-                    investor_queries.upsert_investor({
-                        "company_id": target_org_id,
-                        "name": target_company.get("name", company_name),
-                        "country_code": target_company.get("country_code", "SE"),
-                        "description": target_company.get("description"),
-                        "sectors": target_company.get("sectors"),
-                        "mission": target_company.get("mission"),
-                        "website": target_company.get("website"),
-                        "num_employees": target_company.get("num_employees"),
-                        "year_founded": target_company.get("year_founded"),
-                        "aliases": target_company.get("aliases"),
-                        "key_people": target_company.get("key_people"),
-                        "portfolio": portfolio_data_for_storage,
-                    })
+        # Recursively process this portfolio company if it has its own portfolio
+        if target_org_id not in visited and portfolio_data_recursive:
+            # Process the recursive portfolio
+            recursive_entities = process_portfolio_companies(
+                target_org_id,
+                portfolio_data_recursive,
+                visited
+            )
+            
+            # If this company has a portfolio (found in FI docs), convert it to Fund
+            # Use portfolio_data_recursive check, not recursive_entities, because
+            # recursive_entities might be empty if all items were already visited
+            logger.info(f"Company {target_org_id} has portfolio - converting to Fund")
+            company_queries.convert_company_to_fund(target_org_id)
+            # Update as Fund with portfolio data and extracted fields, preserving all existing fields
+            portfolio_data_for_storage = [
+                {
+                    "entity_id": e.entity_id,
+                    "name": e.name,
+                    "entity_type": e.entity_type,
+                    "ownership_pct": e.ownership_pct
+                }
+                for e in recursive_entities
+            ]
+            target_company = company_queries.get_company(target_org_id) or {}
+            # Merge extracted fields (already extracted above, but ensure they're included)
+            target_company.update(extracted_fields)
+            target_company["company_id"] = target_org_id
+            target_company["name"] = company_name
+            target_company["portfolio"] = portfolio_data_for_storage
+            if "country_code" not in target_company or not target_company["country_code"]:
+                target_company["country_code"] = "SE"
+            investor_queries.upsert_investor(target_company)
     
     return entity_refs
 
@@ -330,17 +403,31 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
             "sectors": [],
         })
     
-    # Extract portfolio from FI documents
+    # Extract portfolio from FI documents and report text
     logger.info(f"Starting portfolio extraction for {organization_id} ({name})")
-    portfolio_data = extract_portfolio_from_fi(organization_id)
+    portfolio_data, report_text = extract_portfolio_from_fi(organization_id)
     
     if not portfolio_data:
         logger.warning(f"No portfolio data extracted for {organization_id}")
+        # Still try to extract company fields from report/web even if no portfolio
+        if report_text:
+            logger.info(f"Extracting company fields from report for {organization_id}")
+            extracted_fields = extract_company_fields(name, organization_id, report_text)
+            if extracted_fields:
+                existing = company_queries.get_company(organization_id) or {}
+                existing.update(extracted_fields)
+                existing["company_id"] = organization_id
+                existing["name"] = name
+                company_queries.upsert_company(existing)
         return {
             "organization_id": organization_id,
             "portfolio": [],
             "companies_processed": 0
         }
+    
+    # Extract company fields from report and web search
+    logger.info(f"Extracting company fields from report and web for {organization_id}")
+    extracted_fields = extract_company_fields(name, organization_id, report_text)
     
     logger.info(f"Processing {len(portfolio_data)} portfolio companies...")
     
@@ -364,22 +451,17 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
         for e in portfolio_entities
     ]
     
-    # Update company node with portfolio data
-    existing = company_queries.get_company(organization_id)
-    if existing:
-        existing["portfolio"] = portfolio_data_for_storage
-        company_queries.upsert_company(existing)
-    else:
-        # Create new company node
-        company_queries.upsert_company({
-            "company_id": organization_id,
-            "name": name,
-            "country_code": "SE",
-            "description": "",
-            "mission": "",
-            "sectors": [],
-            "portfolio": portfolio_data_for_storage,
-        })
+    # Update company node with portfolio data and extracted fields
+    existing = company_queries.get_company(organization_id) or {}
+    # Merge extracted fields with existing data
+    existing.update(extracted_fields)
+    existing["company_id"] = organization_id
+    existing["name"] = name
+    existing["portfolio"] = portfolio_data_for_storage
+    # Ensure required fields have defaults
+    if "country_code" not in existing or not existing["country_code"]:
+        existing["country_code"] = "SE"
+    company_queries.upsert_company(existing)
     
     # If portfolio was found, convert Company to Fund (add Fund label)
     if portfolio_entities:

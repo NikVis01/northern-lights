@@ -5,7 +5,17 @@ from typing import List, Optional, Dict, Any
 def upsert_company(company_data: Dict[str, Any]) -> None:
     """
     Upsert a Company node with full metadata.
+    
+    Validates that company_id is a valid Swedish organization number before upserting.
     """
+    company_id = company_data.get("company_id", "")
+    
+    # Validate organization number format (10 digits)
+    import re
+    cleaned = re.sub(r'[-\s]', '', str(company_id))
+    if not (len(cleaned) == 10 and cleaned.isdigit()):
+        raise ValueError(f"Invalid organization number format: '{company_id}'. Must be 10 digits (format: XXXXXX-XXXX)")
+    
     query = """
     MERGE (c:Company {company_id: $company_id})
     SET c.name = $name,
