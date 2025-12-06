@@ -3,6 +3,9 @@ from pydantic import BaseModel
 
 from app.dependencies import ApiKeyDep
 
+from app.db.queries import investor_queries, relationship_queries
+
+
 router = APIRouter()
 
 
@@ -58,3 +61,39 @@ async def unified_search(body: UnifiedSearchQuery, api_key: ApiKeyDep):
         )
 
     return sorted(results, key=lambda x: x.score, reverse=True)[: body.limit]
+
+
+# Get all companies and investors for the frontend graph functionality
+@router.get("/all")
+async def get_all_entities(api_key: ApiKeyDep):
+    """Get all companies and investors for the frontend graph functionality."""
+    # 1. Fetch nodes
+    companies = investor_queries.get_all_companies()
+    investors = investor_queries.get_all_investors()
+
+    nodes = []
+
+    # Process companies
+    for c in companies:
+        nodes.append(
+            {
+                "id": c["company_id"],
+                "name": c.get("name", "Unknown Company"),
+                "type": "company",
+                # Default value or calculate based on relationships/page rank later
+                "val": 10,
+            }
+        )
+
+    # Process investors
+    for inv in investors:
+        nodes.append({"id": inv["company_id"], "name": inv.get("name", "Unknown Investor"), "type": "fund", "val": 15})
+
+    # 2. Fetch edges
+    rels = relationship_queries.get_all_relationships()
+
+    links = []
+    for r in rels:
+        links.append({"source": r["source"], "target": r["target"], "ownership": r["ownership"]})
+
+    return {"nodes": nodes, "links": links}

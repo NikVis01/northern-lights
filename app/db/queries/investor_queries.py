@@ -90,3 +90,31 @@ def find_investors_by_sector(sector: str) -> List[Dict[str, Any]]:
     with driver.session() as session:
         result = session.run(query, sector=sector)
         return [dict(record["f"]) for record in result]
+
+
+def get_all_investors() -> List[Dict[str, Any]]:
+    """
+    Retrieve all Fund nodes.
+    """
+    query = """
+    MATCH (f:Fund)
+    RETURN f
+    """
+    driver = get_driver()
+    with driver.session() as session:
+        result = session.run(query)
+        return [dict(record["f"]) for record in result]
+
+
+def get_all_companies() -> List[Dict[str, Any]]:
+    """
+    Retrieve all Company nodes.
+    """
+    query = """
+    MATCH (c:Company)
+    RETURN c
+    """
+    driver = get_driver()
+    with driver.session() as session:
+        result = session.run(query)
+        return [dict(record["c"]) for record in result]

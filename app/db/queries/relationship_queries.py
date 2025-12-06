@@ -2,9 +2,7 @@ from app.db.neo4j_client import get_driver
 from typing import List, Dict, Any
 
 
-def add_ownership(
-    owner_id: str, company_id: str, properties: Dict[str, Any] = None
-) -> None:
+def add_ownership(owner_id: str, company_id: str, properties: Dict[str, Any] = None) -> None:
     """
     Create an OWNS relationship from an owner (Fund or Company) to a target (Fund or Company).
     Supports bidirectional ownership (Fund A can own Fund B, and Fund B can own Fund A).
@@ -17,7 +15,7 @@ def add_ownership(
     # Prevent self-ownership
     if owner_id == company_id:
         return
-    
+
     # Both source and target can be Fund or Company
     # This allows bidirectional ownership between funds
 
@@ -35,9 +33,7 @@ def add_ownership(
 
     driver = get_driver()
     with driver.session() as session:
-        session.run(
-            query, owner_id=owner_id, company_id=company_id, properties=properties
-        )
+        session.run(query, owner_id=owner_id, company_id=company_id, properties=properties)
 
 
 def get_company_owners(company_id: str) -> List[Dict[str, Any]]:
@@ -93,7 +89,7 @@ def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
     # Neo4j doesn't allow parameters in variable-length patterns, so we format the depth
     # Limit depth to prevent excessive queries
     depth = min(max(1, depth), 5)
-    
+
     # Undirected relationship pattern captures both (A)-[:OWNS]->(B) and (B)-[:OWNS]->(A)
     query = f"""
     MATCH (root)
@@ -104,48 +100,50 @@ def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
     RETURN DISTINCT root, connected, rels, labels(root) as root_labels, labels(connected) as connected_labels
     LIMIT 100
     """
-    
+
     driver = get_driver()
     with driver.session() as session:
         result = session.run(query, entity_id=entity_id)
         nodes = {}
         edges = []
         root_node = None
-        
+
         for record in result:
             root = dict(record["root"])
             connected = dict(record["connected"])
             root_labels = record["root_labels"]
             connected_labels = record["connected_labels"]
             rels = record["rels"]
-            
+
             root_id = root.get("company_id", "")
             if not root_node and root_id == entity_id:
                 root_node = {
                     "id": root_id,
                     "name": root.get("name", "Unknown"),
-                    "node_type": "company" if "Company" in root_labels else "fund"
+                    "node_type": "company" if "Company" in root_labels else "fund",
                 }
                 nodes[root_id] = root_node
-            
+
             node_id = connected.get("company_id", "")
             if node_id and node_id not in nodes:
                 nodes[node_id] = {
                     "id": node_id,
                     "name": connected.get("name", "Unknown"),
-                    "node_type": "company" if "Company" in connected_labels else "fund"
+                    "node_type": "company" if "Company" in connected_labels else "fund",
                 }
-            
+
             # Add edges from relationships
             for rel in rels:
                 rel_dict = dict(rel)
-                edges.append({
-                    "source": root_id,
-                    "target": node_id,
-                    "rel_type": rel.type,
-                    "ownership_pct": rel_dict.get("share_percentage") or rel_dict.get("ownership_pct")
-                })
-        
+                edges.append(
+                    {
+                        "source": root_id,
+                        "target": node_id,
+                        "rel_type": rel.type,
+                        "ownership_pct": rel_dict.get("share_percentage") or rel_dict.get("ownership_pct"),
+                    }
+                )
+
         # Ensure root node is included
         if not root_node:
             # Try to get root node separately
@@ -162,13 +160,31 @@ def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
                 root_node = {
                     "id": root.get("company_id", entity_id),
                     "name": root.get("name", "Unknown"),
-                    "node_type": "company" if "Company" in root_labels else "fund"
+                    "node_type": "company" if "Company" in root_labels else "fund",
                 }
                 nodes[entity_id] = root_node
-        
-        return {
-            "root_id": entity_id,
-            "nodes": list(nodes.values()),
-            "edges": edges,
-            "depth": depth
-        }
+
+        return {"root_id": entity_id, "nodes": list(nodes.values()), "edges": edges, "depth": depth}
+
+
+def get_all_relationships() -> List[Dict[str, Any]]:
+    """
+    Get all OWNS relationships between Funds and Companies.
+    Returns a list of dictionaries containing source, target, and ownership percentage.
+    """
+    query = """
+    MATCH (s)-[r:OWNS]->(t)
+    WHERE (s:Fund OR s:Company) AND (t:Fund OR t:Company)
+    RETURN s.company_id as source, t.company_id as target, 
+           coalesce(r.share_percentage, r.ownership_pct, 0) as ownership
+    """
+
+    driver = get_driver()
+    with driver.session() as session:
+        result = session.run(query)
+        relationships = []
+        for record in result:
+            relationships.append(
+                {"source": record["source"], "target": record["target"], "ownership": record["ownership"]}
+            )
+        return relationships
