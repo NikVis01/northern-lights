@@ -13,6 +13,7 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
     - description (str)
     - sectors (List[str])
     - vector (List[float], optional)
+    - investment_thesis (str, optional)
     """
     query = """
     MERGE (f:Fund {company_id: $company_id})
@@ -20,13 +21,13 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
         f.country_code = $country_code,
         f.description = $description,
         f.sectors = $sectors,
-        f.updated_at = datetime()
+        f.updated_at = datetime(),
+        f.investment_thesis = $investment_thesis
     WITH f
     WHERE $vector IS NOT NULL
     SET f.vector = $vector
     WITH f
-    WHERE $portfolio IS NOT NULL
-    SET f.portfolio = $portfolio
+    SET f.portfolio = COALESCE($portfolio, [])
     """
 
     params = {
@@ -37,6 +38,7 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
         "sectors": investor_data.get("sectors", []),
         "vector": investor_data.get("vector"),
         "portfolio": investor_data.get("portfolio"),
+        "investment_thesis": investor_data.get("investment_thesis", ""),
     }
 
     driver = get_driver()
@@ -59,6 +61,20 @@ def get_investor(company_id: str) -> Optional[Dict[str, Any]]:
         if record:
             return dict(record["f"])
         return None
+
+
+def convert_company_to_fund(company_id: str) -> None:
+    """
+    Adds the 'Fund' label to an existing Company node.
+    """
+    query = """
+    MATCH (c)
+    WHERE c.company_id = $company_id
+    SET c:Fund
+    """
+    driver = get_driver()
+    with driver.session() as session:
+        session.run(query, company_id=company_id)
 
 
 def find_investors_by_sector(sector: str) -> List[Dict[str, Any]]:
