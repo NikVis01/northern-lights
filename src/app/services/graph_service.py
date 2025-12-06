@@ -1,8 +1,8 @@
 from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
-from src.app.db.neo4j_client import get_driver
-from src.app.models.company import CompanyOut
-from src.app.models.investor import InvestorOut
+from app.db.neo4j_client import get_driver
+from app.models.company import CompanyOut
+from app.models.investor import InvestorOut
 
 
 class GraphService:

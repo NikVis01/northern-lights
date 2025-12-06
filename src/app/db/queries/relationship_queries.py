@@ -1,4 +1,4 @@
-from src.app.db.neo4j_client import get_driver
+from app.db.neo4j_client import get_driver
 from typing import List, Dict, Any
 
 
