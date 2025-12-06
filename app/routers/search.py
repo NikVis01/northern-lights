@@ -88,9 +88,9 @@ async def get_all_entities(api_key: ApiKeyDep):
                         "orgNumber": c.get("company_id", ""),
                         "sector": c.get("sectors", ["Unknown"])[0] if c.get("sectors") else "Unknown",
                         "country": c.get("country_code", "SE"),
-                        "cluster": 1,  # Placeholder
-                        # Default value or calculate based on relationships/page rank later
+                        "cluster": 1,
                         "val": 10,
+                        "website": c.get("website"),
                     }
                 )
             except Exception as e:
@@ -108,8 +108,9 @@ async def get_all_entities(api_key: ApiKeyDep):
                         "orgNumber": inv.get("company_id", ""),
                         "sector": inv.get("sectors", ["Unknown"])[0] if inv.get("sectors") else "Unknown",
                         "country": inv.get("country_code", "SE"),
-                        "cluster": 1,  # Placeholder
+                        "cluster": 1,
                         "val": 15,
+                        "website": inv.get("website"),
                     }
                 )
             except Exception as e:
