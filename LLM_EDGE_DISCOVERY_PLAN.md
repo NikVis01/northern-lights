@@ -325,3 +325,6 @@ app/
 3. **Common Investor Analysis:** Easy to find companies with shared investors
 4. **Scalable:** Works for thousands of companies automatically
 
+
+
+

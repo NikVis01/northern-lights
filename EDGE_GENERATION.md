@@ -161,3 +161,6 @@ To test with Investor AB:
 3. **Complete Ingestion Pipeline:** Implement the Pub/Sub processing that creates edges from portfolio data
 4. **Add Relationship Types:** Implement `INVESTED_IN` and `SUBSIDIARY_OF` if needed
 
+
+
+

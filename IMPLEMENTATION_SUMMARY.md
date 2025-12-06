@@ -264,3 +264,6 @@ async def get_companies_with_common_investors(org_id: str):
 2. Ingest Atlas Copco (shareholder: Investor AB)
 3. Query for common investors → Should return Investor AB for both
 
+
+
+
