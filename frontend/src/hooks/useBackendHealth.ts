@@ -9,7 +9,7 @@ export const useBackendHealth = () => {
   const checkHealth = async () => {
     try {
       setIsChecking(true);
-      const response = await fetch(getBackendUrl("/api/health"), {
+      const response = await fetch(getBackendUrl("/health"), {
         method: "GET",
         signal: AbortSignal.timeout(5000), // 5 second timeout
       });
