@@ -37,6 +37,9 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
+# Set working directory to src for uvicorn
+WORKDIR /app/src
+
 # Expose port (Cloud Run uses PORT env var)
 ENV PORT=8080
 EXPOSE 8080
