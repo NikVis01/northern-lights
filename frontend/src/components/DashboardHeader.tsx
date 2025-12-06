@@ -1,5 +1,6 @@
 import { Activity, User, Settings, LogOut, Globe, ChevronDown, Check, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
+import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 
 const Header = () => {
+  const navigate = useNavigate();
   const { language, setLanguage, t } = useLanguage();
   const { isHealthy, lastChecked } = useBackendHealth();
 
@@ -43,7 +45,10 @@ const Header = () => {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/90 backdrop-blur-sm">
       <div className="container mx-auto px-6 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div 
+          onClick={() => navigate("/")}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+        >
           <div className="w-2 h-2 rounded-full bg-foreground" />
           <span className="font-mono text-sm tracking-wider uppercase text-foreground">
             Northern Lights
