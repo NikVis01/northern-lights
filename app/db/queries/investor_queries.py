@@ -13,6 +13,7 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
     - description (str)
     - sectors (List[str])
     - vector (List[float], optional)
+    - investment_thesis (str, optional)
     """
     query = """
     MERGE (f:Fund {company_id: $company_id})
@@ -20,7 +21,8 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
         f.country_code = $country_code,
         f.description = $description,
         f.sectors = $sectors,
-        f.updated_at = datetime()
+        f.updated_at = datetime(),
+        f.investment_thesis = $investment_thesis
     WITH f
     WHERE $vector IS NOT NULL
     SET f.vector = $vector
@@ -33,6 +35,7 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
         "description": investor_data.get("description", ""),
         "sectors": investor_data.get("sectors", []),
         "vector": investor_data.get("vector"),
+        "investment_thesis": investor_data.get("investment_thesis", ""),
     }
 
     driver = get_driver()
