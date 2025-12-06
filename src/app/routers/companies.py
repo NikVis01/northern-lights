@@ -9,51 +9,35 @@ from app.models import (
     CompanyLeads,
 )
 from app.dependencies import SettingsDep, ApiKeyDep
+from app.db.queries import company_queries
+from app.services.graph_service import GraphService
 
 router = APIRouter()
 
-# Mock data for testing
-MOCK_COMPANIES = {
-    "5591234567": CompanyOut(
-        organization_id="5591234567",
-        name="Spotify AB",
-        aliases=["Spotify"],
-        year_founded="2006",
-        sectors=["Technology", "Entertainment"],
-        description="Music streaming platform",
-        num_employees=8000,
-        mission="Unlock the potential of human creativity",
-        key_people=["Daniel Ek", "Martin Lorentzon"],
-        website="https://spotify.com",
-        cluster_id=1,
-    ),
-    "5561234568": CompanyOut(
-        organization_id="5561234568",
-        name="Klarna Bank AB",
-        aliases=["Klarna"],
-        year_founded="2005",
-        sectors=["Fintech", "Banking"],
-        description="Buy now pay later fintech",
-        num_employees=5000,
-        mission="Make paying smoother",
-        key_people=["Sebastian Siemiatkowski"],
-        website="https://klarna.com",
-        cluster_id=2,
-    ),
-    "5569876543": CompanyOut(
-        organization_id="5569876543",
-        name="Northvolt AB",
-        aliases=["Northvolt"],
-        year_founded="2016",
-        sectors=["CleanTech", "Manufacturing"],
-        description="Battery manufacturing",
-        num_employees=3000,
-        mission="Build the greenest battery in the world",
-        key_people=["Peter Carlsson"],
-        website="https://northvolt.com",
-        cluster_id=1,
-    ),
-}
+
+def _db_to_company_out(db_data: dict) -> CompanyOut:
+    """Convert DB dict to CompanyOut model, mapping company_id -> organization_id"""
+    if not db_data:
+        return None
+    
+    # Map company_id to organization_id
+    data = db_data.copy()
+    if "company_id" in data:
+        data["organization_id"] = data.pop("company_id")
+    
+    # Ensure list fields are lists
+    for field in ["aliases", "sectors", "portfolio", "shareholders", "customers", "key_people"]:
+        if field not in data or data[field] is None:
+            data[field] = []
+    
+    # Extract cluster_id if present
+    cluster_id = data.pop("cluster_id", None)
+    
+    try:
+        company = CompanyOut(**data, cluster_id=cluster_id)
+        return company
+    except Exception as e:
+        raise ValueError(f"Failed to convert DB data to CompanyOut: {e}")
 
 
 @router.post("/ingest", status_code=202)
@@ -72,38 +56,72 @@ async def ingest_company(
 @router.get("/{organization_id}", response_model=CompanyOut)
 async def get_company(organization_id: str, api_key: ApiKeyDep):
     """Get company by Swedish Org. No."""
-    if organization_id not in MOCK_COMPANIES:
+    db_data = company_queries.get_company(organization_id)
+    if not db_data:
         raise HTTPException(404, f"Company {organization_id} not found")
-    return MOCK_COMPANIES[organization_id]
+    
+    return _db_to_company_out(db_data)
 
 
 @router.post("/search", response_model=list[CompanySearchResult])
 async def search_companies(body: CompanySearch, api_key: ApiKeyDep):
     """Vector similarity search on company descriptions."""
-    # Mock: return all companies with fake scores
-    results = []
-    for c in MOCK_COMPANIES.values():
-        if body.sectors and not any(s in c.sectors for s in body.sectors):
-            continue
-        results.append(CompanySearchResult(**c.model_dump(), score=0.85))
-    return results[: body.limit]
+    # Generate vector from query text
+    graph_service = GraphService()
+    query_vector = graph_service.model.encode(body.query).tolist()
+    
+    # Search similar companies
+    results = company_queries.search_similar_companies(query_vector, limit=body.limit)
+    
+    # Convert to response model
+    search_results = []
+    for result in results:
+        company_data = result["company"]
+        score = result["score"]
+        
+        # Filter by sectors if specified
+        if body.sectors:
+            company_sectors = company_data.get("sectors", [])
+            if not any(s in company_sectors for s in body.sectors):
+                continue
+        
+        company_out = _db_to_company_out(company_data)
+        if company_out:
+            search_results.append(CompanySearchResult(**company_out.model_dump(), score=float(score)))
+    
+    return search_results[:body.limit]
 
 
 @router.get("/{organization_id}/leads", response_model=CompanyLeads)
 async def get_leads(organization_id: str, api_key: ApiKeyDep):
     """Get companies in same Leiden cluster (competitive leads)."""
-    if organization_id not in MOCK_COMPANIES:
+    # Get company to find its cluster_id
+    db_data = company_queries.get_company(organization_id)
+    if not db_data:
         raise HTTPException(404, f"Company {organization_id} not found")
-
-    company = MOCK_COMPANIES[organization_id]
-    # Mock: return companies with same cluster_id
-    leads = [
-        c
-        for c in MOCK_COMPANIES.values()
-        if c.cluster_id == company.cluster_id and c.organization_id != organization_id
-    ]
+    
+    cluster_id = db_data.get("cluster_id")
+    if not cluster_id:
+        return CompanyLeads(
+            organization_id=organization_id,
+            cluster_id=0,
+            leads=[],
+        )
+    
+    # Get all companies in same cluster
+    cluster_companies = company_queries.get_companies_by_cluster(cluster_id)
+    
+    # Convert to CompanyOut and exclude the original company
+    leads = []
+    for company_data in cluster_companies:
+        if company_data.get("company_id") == organization_id:
+            continue
+        company_out = _db_to_company_out(company_data)
+        if company_out:
+            leads.append(company_out)
+    
     return CompanyLeads(
         organization_id=organization_id,
-        cluster_id=company.cluster_id or 0,
+        cluster_id=cluster_id,
         leads=leads,
     )

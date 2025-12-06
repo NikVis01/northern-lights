@@ -90,3 +90,17 @@ def search_similar_companies(
             {"company": dict(record["node"]), "score": record["score"]}
             for record in result
         ]
+
+
+def get_companies_by_cluster(cluster_id: int) -> List[Dict[str, Any]]:
+    """
+    Get all companies in a specific cluster.
+    """
+    query = """
+    MATCH (c:Company {cluster_id: $cluster_id})
+    RETURN c
+    """
+    driver = get_driver()
+    with driver.session() as session:
+        result = session.run(query, cluster_id=cluster_id)
+        return [dict(record["c"]) for record in result]

@@ -76,3 +76,85 @@ def get_portfolio(owner_id: str) -> List[Dict[str, Any]]:
             target_data["_relationship"] = dict(record["r"])
             portfolio.append(target_data)
         return portfolio
+
+
+def get_network_graph(entity_id: str, depth: int = 2) -> Dict[str, Any]:
+    """
+    Get ownership network graph around an entity up to specified depth.
+    Returns nodes and relationships.
+    """
+    query = """
+    MATCH path = (root {company_id: $entity_id})-[r:OWNS*1..$depth]-(connected)
+    WHERE (root:Company OR root:Fund) AND (connected:Company OR connected:Fund)
+    WITH root, connected, relationships(path) as rels
+    RETURN DISTINCT root, connected, rels, labels(root) as root_labels, labels(connected) as connected_labels
+    LIMIT 100
+    """
+    
+    driver = get_driver()
+    with driver.session() as session:
+        result = session.run(query, entity_id=entity_id, depth=depth)
+        nodes = {}
+        edges = []
+        root_node = None
+        
+        for record in result:
+            root = dict(record["root"])
+            connected = dict(record["connected"])
+            root_labels = record["root_labels"]
+            connected_labels = record["connected_labels"]
+            rels = record["rels"]
+            
+            root_id = root.get("company_id", "")
+            if not root_node and root_id == entity_id:
+                root_node = {
+                    "id": root_id,
+                    "name": root.get("name", "Unknown"),
+                    "node_type": "company" if "Company" in root_labels else "fund"
+                }
+                nodes[root_id] = root_node
+            
+            node_id = connected.get("company_id", "")
+            if node_id and node_id not in nodes:
+                nodes[node_id] = {
+                    "id": node_id,
+                    "name": connected.get("name", "Unknown"),
+                    "node_type": "company" if "Company" in connected_labels else "fund"
+                }
+            
+            # Add edges from relationships
+            for rel in rels:
+                rel_dict = dict(rel)
+                edges.append({
+                    "source": root_id,
+                    "target": node_id,
+                    "rel_type": rel.type,
+                    "ownership_pct": rel_dict.get("share_percentage") or rel_dict.get("ownership_pct")
+                })
+        
+        # Ensure root node is included
+        if not root_node:
+            # Try to get root node separately
+            root_query = """
+            MATCH (root {company_id: $entity_id})
+            WHERE root:Company OR root:Fund
+            RETURN root, labels(root) as labels
+            """
+            root_result = session.run(root_query, entity_id=entity_id)
+            root_record = root_result.single()
+            if root_record:
+                root = dict(root_record["root"])
+                root_labels = root_record["labels"]
+                root_node = {
+                    "id": root.get("company_id", entity_id),
+                    "name": root.get("name", "Unknown"),
+                    "node_type": "company" if "Company" in root_labels else "fund"
+                }
+                nodes[entity_id] = root_node
+        
+        return {
+            "root_id": entity_id,
+            "nodes": list(nodes.values()),
+            "edges": edges,
+            "depth": depth
+        }
