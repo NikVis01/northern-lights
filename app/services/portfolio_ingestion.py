@@ -14,7 +14,15 @@ HACK_NET_PATH = Path(__file__).parent.parent.parent / "data_pipeline" / "illegal
 from app.db.queries import company_queries, relationship_queries, investor_queries
 from app.models import EntityRef
 from app.services.company_data_extraction import extract_company_fields
-from app.services.investor_discovery import discover_and_link_investors
+
+# Try to import investor discovery (may fail if dependencies missing)
+try:
+    from app.services.investor_discovery import discover_and_link_investors
+    INVESTOR_DISCOVERY_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Investor discovery not available: {e}")
+    INVESTOR_DISCOVERY_AVAILABLE = False
+    discover_and_link_investors = None
 
 logger = logging.getLogger(__name__)
 
@@ -527,14 +535,17 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
             raise
         
         # Discover and link investors even if no portfolio found
-        logger.info(f"Discovering investors for {organization_id} ({name})")
         investor_results = None
-        try:
-            investor_results = discover_and_link_investors(name, organization_id)
-            logger.info(f"Investor discovery complete: {investor_results.get('investors_linked', 0)} investors linked")
-        except Exception as e:
-            logger.warning(f"Investor discovery failed for {organization_id}: {e}", exc_info=True)
-            # Don't fail the entire ingestion if investor discovery fails
+        if INVESTOR_DISCOVERY_AVAILABLE and discover_and_link_investors:
+            logger.info(f"Discovering investors for {organization_id} ({name})")
+            try:
+                investor_results = discover_and_link_investors(name, organization_id)
+                logger.info(f"Investor discovery complete: {investor_results.get('investors_linked', 0)} investors linked")
+            except Exception as e:
+                logger.warning(f"Investor discovery failed for {organization_id}: {e}", exc_info=True)
+                # Don't fail the entire ingestion if investor discovery fails
+        else:
+            logger.debug(f"Investor discovery not available, skipping for {organization_id}")
         
         return {
             "organization_id": organization_id,
@@ -611,14 +622,17 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
         })
     
     # Discover and link investors (who owns this company)
-    logger.info(f"Discovering investors for {organization_id} ({name})")
     investor_results = None
-    try:
-        investor_results = discover_and_link_investors(name, organization_id)
-        logger.info(f"Investor discovery complete: {investor_results.get('investors_linked', 0)} investors linked")
-    except Exception as e:
-        logger.warning(f"Investor discovery failed for {organization_id}: {e}", exc_info=True)
-        # Don't fail the entire ingestion if investor discovery fails
+    if INVESTOR_DISCOVERY_AVAILABLE and discover_and_link_investors:
+        logger.info(f"Discovering investors for {organization_id} ({name})")
+        try:
+            investor_results = discover_and_link_investors(name, organization_id)
+            logger.info(f"Investor discovery complete: {investor_results.get('investors_linked', 0)} investors linked")
+        except Exception as e:
+            logger.warning(f"Investor discovery failed for {organization_id}: {e}", exc_info=True)
+            # Don't fail the entire ingestion if investor discovery fails
+    else:
+        logger.debug(f"Investor discovery not available, skipping for {organization_id}")
     
     return {
         "organization_id": organization_id,
