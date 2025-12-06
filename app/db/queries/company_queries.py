@@ -4,17 +4,7 @@ from typing import List, Optional, Dict, Any
 
 def upsert_company(company_data: Dict[str, Any]) -> None:
     """
-    Upsert a Company node.
-
-    Expected keys in company_data:
-    - company_id (str)
-    - name (str)
-    - country_code (str)
-    - description (str)
-    - mission (str)
-    - sectors (List[str])
-    - cluster_id (int, optional)
-    - vector (List[float], optional)
+    Upsert a Company node with full metadata.
     """
     query = """
     MERGE (c:Company {company_id: $company_id})
@@ -23,7 +13,15 @@ def upsert_company(company_data: Dict[str, Any]) -> None:
         c.description = $description,
         c.mission = $mission,
         c.sectors = $sectors,
-        c.updated_at = datetime()
+        c.updated_at = datetime(),
+        
+        // New fields supported by LLM ingestion
+        c.website = $website,
+        c.num_employees = $num_employees,
+        c.year_founded = $year_founded,
+        c.aliases = $aliases,
+        c.key_people = $key_people
+
     WITH c
     WHERE $cluster_id IS NOT NULL
     SET c.cluster_id = $cluster_id
@@ -32,7 +30,7 @@ def upsert_company(company_data: Dict[str, Any]) -> None:
     SET c.vector = $vector
     """
 
-    # Ensure optional fields are present in params or handled
+    # Prepare params with defaults for safety
     params = {
         "company_id": company_data["company_id"],
         "name": company_data["name"],
@@ -40,6 +38,11 @@ def upsert_company(company_data: Dict[str, Any]) -> None:
         "description": company_data.get("description", ""),
         "mission": company_data.get("mission", ""),
         "sectors": company_data.get("sectors", []),
+        "website": company_data.get("website", ""),
+        "num_employees": company_data.get("num_employees"),
+        "year_founded": str(company_data.get("year_founded") or ""),
+        "aliases": company_data.get("aliases", []),
+        "key_people": company_data.get("key_people", []),
         "cluster_id": company_data.get("cluster_id"),
         "vector": company_data.get("vector"),
     }
