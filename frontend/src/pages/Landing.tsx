@@ -78,7 +78,7 @@ const Index = () => {
       <div className="fixed inset-0 grid-pattern opacity-50" />
       
       {/* Gradient overlays for depth */}
-      <div className="fixed inset-0 bg-gradient-to-b from-transparent via-background/30 to-background/80" />
+      <div className="fixed inset-0 bg-gradient-to-b from-transparent via-background/50 to-background/50" />
       
       {/* Content */}
       <div className="relative z-10">
@@ -206,14 +206,14 @@ const Index = () => {
               <div className="space-y-8">
                 {archItems.map((item, i) => (
                   <div key={i} className="border-l-2 border-border/60 pl-6 py-2 hover:border-foreground/50 transition-colors">
-                    <p className="font-mono text-xs text-muted-foreground uppercase tracking-widest mb-2">{t(item.labelKey)}</p>
+                    <p className="font-mono text-s uppercase tracking-widest mb-2"><strong>{t(item.labelKey)}</strong></p>
                     <p className="text-foreground">{t(item.valueKey)}</p>
                   </div>
                 ))}
               </div>
               
               <div className="bg-card/30 border border-border/40 rounded-lg p-8 font-mono text-xs backdrop-blur-sm">
-                <pre className="text-muted-foreground overflow-x-auto">
+                <pre className="overflow-x-auto">
 {`┌─────────────────────────────────────┐
 │     Cloud Endpoints (API Keys)      │
 └─────────────────────────────────────┘
