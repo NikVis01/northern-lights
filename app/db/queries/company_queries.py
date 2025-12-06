@@ -75,12 +75,12 @@ def get_company(company_id: str) -> Optional[Dict[str, Any]]:
 
 def convert_company_to_fund(company_id: str) -> None:
     """
-    Convert a Company node to Fund by adding Fund label.
-    Keeps Company label so node can be found by both queries.
+    Convert a Company node to Fund by removing Company label and adding Fund label.
     """
     query = """
     MATCH (n {company_id: $company_id})
     WHERE 'Company' IN labels(n)
+    REMOVE n:Company
     SET n:Fund
     """
     driver = get_driver()

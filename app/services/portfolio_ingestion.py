@@ -269,11 +269,44 @@ def process_portfolio_companies(
         if target_org_id not in visited:
             portfolio_data_recursive = extract_portfolio_from_fi(target_org_id)
             if portfolio_data_recursive:
-                process_portfolio_companies(
+                # Process the recursive portfolio
+                recursive_entities = process_portfolio_companies(
                     target_org_id,
                     portfolio_data_recursive,
                     visited
                 )
+                
+                # If this company has a portfolio (found in FI docs), convert it to Fund
+                # Use portfolio_data_recursive check, not recursive_entities, because
+                # recursive_entities might be empty if all items were already visited
+                logger.info(f"Company {target_org_id} has portfolio - converting to Fund")
+                company_queries.convert_company_to_fund(target_org_id)
+                # Update as Fund with portfolio data, preserving all existing fields
+                portfolio_data_for_storage = [
+                    {
+                        "entity_id": e.entity_id,
+                        "name": e.name,
+                        "entity_type": e.entity_type,
+                        "ownership_pct": e.ownership_pct
+                    }
+                    for e in recursive_entities
+                ]
+                target_company = company_queries.get_company(target_org_id)
+                if target_company:
+                    investor_queries.upsert_investor({
+                        "company_id": target_org_id,
+                        "name": target_company.get("name", company_name),
+                        "country_code": target_company.get("country_code", "SE"),
+                        "description": target_company.get("description"),
+                        "sectors": target_company.get("sectors"),
+                        "mission": target_company.get("mission"),
+                        "website": target_company.get("website"),
+                        "num_employees": target_company.get("num_employees"),
+                        "year_founded": target_company.get("year_founded"),
+                        "aliases": target_company.get("aliases"),
+                        "key_people": target_company.get("key_people"),
+                        "portfolio": portfolio_data_for_storage,
+                    })
     
     return entity_refs
 
@@ -352,13 +385,21 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
     if portfolio_entities:
         logger.info(f"Company {organization_id} has portfolio - converting to Fund")
         company_queries.convert_company_to_fund(organization_id)
-        # Also update as Fund to ensure all Fund properties are set, including portfolio
+        # Get existing company data to preserve all fields
+        existing_company = company_queries.get_company(organization_id) or {}
+        # Update as Fund, preserving all existing fields
         investor_queries.upsert_investor({
             "company_id": organization_id,
-            "name": name,
-            "country_code": "SE",
-            "description": "",
-            "sectors": [],
+            "name": existing_company.get("name", name),
+            "country_code": existing_company.get("country_code", "SE"),
+            "description": existing_company.get("description"),
+            "sectors": existing_company.get("sectors"),
+            "mission": existing_company.get("mission"),
+            "website": existing_company.get("website"),
+            "num_employees": existing_company.get("num_employees"),
+            "year_founded": existing_company.get("year_founded"),
+            "aliases": existing_company.get("aliases"),
+            "key_people": existing_company.get("key_people"),
             "portfolio": portfolio_data_for_storage,
         })
     

@@ -17,28 +17,41 @@ def upsert_investor(investor_data: Dict[str, Any]) -> None:
     """
     query = """
     MERGE (f:Fund {company_id: $company_id})
+    REMOVE f:Company
     SET f.name = $name,
         f.country_code = $country_code,
-        f.description = $description,
-        f.sectors = $sectors,
+        f.description = COALESCE($description, f.description, ""),
+        f.sectors = COALESCE($sectors, f.sectors, []),
+        f.mission = COALESCE($mission, f.mission, ""),
+        f.website = COALESCE($website, f.website, ""),
+        f.num_employees = COALESCE($num_employees, f.num_employees),
+        f.year_founded = COALESCE($year_founded, f.year_founded, ""),
+        f.aliases = COALESCE($aliases, f.aliases, []),
+        f.key_people = COALESCE($key_people, f.key_people, []),
         f.updated_at = datetime(),
-        f.investment_thesis = $investment_thesis
+        f.investment_thesis = COALESCE($investment_thesis, f.investment_thesis, "")
     WITH f
     WHERE $vector IS NOT NULL
     SET f.vector = $vector
     WITH f
-    SET f.portfolio = COALESCE($portfolio, [])
+    SET f.portfolio = COALESCE($portfolio, f.portfolio, [])
     """
 
     params = {
         "company_id": investor_data["company_id"],
         "name": investor_data["name"],
         "country_code": investor_data.get("country_code", "SE"),
-        "description": investor_data.get("description", ""),
-        "sectors": investor_data.get("sectors", []),
+        "description": investor_data.get("description"),
+        "sectors": investor_data.get("sectors"),
+        "mission": investor_data.get("mission"),
+        "website": investor_data.get("website"),
+        "num_employees": investor_data.get("num_employees"),
+        "year_founded": investor_data.get("year_founded"),
+        "aliases": investor_data.get("aliases"),
+        "key_people": investor_data.get("key_people"),
         "vector": investor_data.get("vector"),
         "portfolio": investor_data.get("portfolio"),
-        "investment_thesis": investor_data.get("investment_thesis", ""),
+        "investment_thesis": investor_data.get("investment_thesis"),
     }
 
     driver = get_driver()
@@ -65,11 +78,12 @@ def get_investor(company_id: str) -> Optional[Dict[str, Any]]:
 
 def convert_company_to_fund(company_id: str) -> None:
     """
-    Adds the 'Fund' label to an existing Company node.
+    Converts a Company node to Fund by removing Company label and adding Fund label.
     """
     query = """
     MATCH (c)
-    WHERE c.company_id = $company_id
+    WHERE c.company_id = $company_id AND 'Company' IN labels(c)
+    REMOVE c:Company
     SET c:Fund
     """
     driver = get_driver()
