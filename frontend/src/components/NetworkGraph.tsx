@@ -27,41 +27,7 @@ interface GraphData {
   links: Link[];
 }
 
-const sampleData: GraphData = {
-  nodes: [
-    { id: "1", name: "Volvo AB", type: "company", cluster: 1, val: 30 },
-    { id: "2", name: "Geely Holdings", type: "fund", cluster: 1, val: 40 },
-    { id: "3", name: "Spotify AB", type: "company", cluster: 2, val: 35 },
-    { id: "4", name: "Tencent Holdings", type: "fund", cluster: 2, val: 25 },
-    { id: "5", name: "Ericsson AB", type: "company", cluster: 3, val: 32 },
-    { id: "6", name: "Investor AB", type: "fund", cluster: 1, val: 45 },
-    { id: "7", name: "H&M Group", type: "company", cluster: 4, val: 28 },
-    { id: "8", name: "Persson Family", type: "fund", cluster: 4, val: 20 },
-    { id: "9", name: "Klarna AB", type: "company", cluster: 2, val: 30 },
-    { id: "10", name: "Sequoia Capital", type: "fund", cluster: 2, val: 35 },
-    { id: "11", name: "IKEA Holding", type: "company", cluster: 5, val: 38 },
-    { id: "12", name: "Stichting INGKA", type: "fund", cluster: 5, val: 42 },
-    { id: "13", name: "Northvolt AB", type: "company", cluster: 3, val: 26 },
-    { id: "14", name: "Goldman Sachs", type: "fund", cluster: 3, val: 30 },
-    { id: "15", name: "Atlas Copco", type: "company", cluster: 1, val: 24 },
-  ],
-  links: [
-    { source: "2", target: "1", ownership: 82 },
-    { source: "6", target: "1", ownership: 8 },
-    { source: "4", target: "3", ownership: 9 },
-    { source: "10", target: "3", ownership: 5 },
-    { source: "6", target: "5", ownership: 22 },
-    { source: "8", target: "7", ownership: 45 },
-    { source: "10", target: "9", ownership: 12 },
-    { source: "4", target: "9", ownership: 8 },
-    { source: "12", target: "11", ownership: 100 },
-    { source: "14", target: "13", ownership: 15 },
-    { source: "6", target: "13", ownership: 10 },
-    { source: "6", target: "15", ownership: 17 },
-    { source: "6", target: "7", ownership: 5 },
-    { source: "14", target: "5", ownership: 3 },
-  ],
-};
+
 
 const NetworkGraph = () => {
   const fgRef = useRef<ForceGraphMethods>();
@@ -74,6 +40,38 @@ const NetworkGraph = () => {
   
   // Determine if we're in dark mode
   const [isDark, setIsDark] = useState(true);
+
+  // Graph data state
+  const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch graph data
+  useEffect(() => {
+    const fetchGraphData = async () => {
+      try {
+        // TODO: Use configured API URL from environment
+        const response = await fetch("http://localhost:8000/v1/search/all", {
+          headers: {
+            "access_token": "dev" // Using dev token for now as per plan
+          }
+        });
+        
+        if (!response.ok) {
+          console.error("Failed to fetch graph data");
+          return;
+        }
+
+        const data = await response.json();
+        setGraphData(data);
+      } catch (error) {
+        console.error("Error fetching graph data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchGraphData();
+  }, []);
   
   useEffect(() => {
     const checkDarkMode = () => {
@@ -108,7 +106,7 @@ const NetworkGraph = () => {
   // Focus on selected entity when it changes
   useEffect(() => {
     if (selectedEntityId && fgRef.current) {
-      const node = sampleData.nodes.find(n => n.id === selectedEntityId);
+      const node = graphData.nodes.find(n => n.id === selectedEntityId);
       if (node && typeof node.x === "number" && typeof node.y === "number") {
         fgRef.current.centerAt(node.x, node.y, 800);
         fgRef.current.zoom(2.5, 800);
@@ -213,7 +211,7 @@ const NetworkGraph = () => {
       <div className="absolute inset-0 rounded-lg overflow-hidden">
         <ForceGraph2D
           ref={fgRef}
-          graphData={sampleData}
+          graphData={graphData}
           width={dimensions.width}
           height={dimensions.height}
           nodeRelSize={5}
