@@ -83,6 +83,105 @@ def get_company(company_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def find_company_by_name(company_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Find a Company or Fund node by name (case-insensitive, handles variations).
+    Checks both name and aliases fields for matches.
+    Returns the first matching company found.
+    """
+    # Normalize company name for matching
+    normalized_name = company_name.strip().upper()
+    # Remove common suffixes for better matching
+    normalized_name_clean = normalized_name.replace(" AB", "").replace(" AB PUBL", "").replace(" AB (PUBL)", "").strip()
+    
+    driver = get_driver()
+    
+    # Try exact match on name first
+    query = """
+    MATCH (n)
+    WHERE ('Company' IN labels(n) OR 'Fund' IN labels(n))
+      AND toUpper(trim(n.name)) = $normalized_name
+    RETURN n
+    LIMIT 1
+    """
+    with driver.session() as session:
+        result = session.run(query, normalized_name=normalized_name)
+        record = result.single()
+        if record:
+            return dict(record["n"])
+    
+    # Try exact match on cleaned name (without AB suffix)
+    if normalized_name_clean != normalized_name:
+        query = """
+        MATCH (n)
+        WHERE ('Company' IN labels(n) OR 'Fund' IN labels(n))
+          AND toUpper(trim(n.name)) = $normalized_name_clean
+        RETURN n
+        LIMIT 1
+        """
+        with driver.session() as session:
+            result = session.run(query, normalized_name_clean=normalized_name_clean)
+            record = result.single()
+            if record:
+                return dict(record["n"])
+    
+    # Try exact match on aliases
+    query = """
+    MATCH (n)
+    WHERE ('Company' IN labels(n) OR 'Fund' IN labels(n))
+      AND n.aliases IS NOT NULL
+      AND $normalized_name IN [alias IN n.aliases WHERE alias IS NOT NULL | toUpper(trim(toString(alias)))]
+    RETURN n
+    LIMIT 1
+    """
+    with driver.session() as session:
+        result = session.run(query, normalized_name=normalized_name)
+        record = result.single()
+        if record:
+            return dict(record["n"])
+    
+    # Try fuzzy match on name - check if name contains the search term or vice versa
+    query = """
+    MATCH (n)
+    WHERE ('Company' IN labels(n) OR 'Fund' IN labels(n))
+      AND (
+        toUpper(trim(n.name)) CONTAINS $normalized_name
+        OR $normalized_name CONTAINS toUpper(trim(n.name))
+        OR toUpper(trim(n.name)) CONTAINS $normalized_name_clean
+        OR $normalized_name_clean CONTAINS toUpper(trim(n.name))
+      )
+    RETURN n
+    LIMIT 1
+    """
+    with driver.session() as session:
+        result = session.run(query, normalized_name=normalized_name, normalized_name_clean=normalized_name_clean)
+        record = result.single()
+        if record:
+            return dict(record["n"])
+    
+    # Try fuzzy match on aliases - check if any alias contains the search term or vice versa
+    query = """
+    MATCH (n)
+    WHERE ('Company' IN labels(n) OR 'Fund' IN labels(n))
+      AND n.aliases IS NOT NULL
+      AND ANY(alias IN n.aliases WHERE alias IS NOT NULL AND (
+        toUpper(trim(toString(alias))) CONTAINS $normalized_name
+        OR $normalized_name CONTAINS toUpper(trim(toString(alias)))
+        OR toUpper(trim(toString(alias))) CONTAINS $normalized_name_clean
+        OR $normalized_name_clean CONTAINS toUpper(trim(toString(alias)))
+      ))
+    RETURN n
+    LIMIT 1
+    """
+    with driver.session() as session:
+        result = session.run(query, normalized_name=normalized_name, normalized_name_clean=normalized_name_clean)
+        record = result.single()
+        if record:
+            return dict(record["n"])
+    
+    return None
+
+
 def convert_company_to_fund(company_id: str) -> None:
     """
     Convert a Company node to Fund by removing Company label and adding Fund label.

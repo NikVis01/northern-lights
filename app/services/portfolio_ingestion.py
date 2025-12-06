@@ -16,6 +16,16 @@ from app.db.queries import company_queries, relationship_queries, investor_queri
 from app.models import EntityRef
 from app.services.company_data_extraction import extract_company_fields
 
+# Try to import investor discovery (may fail if dependencies missing)
+try:
+    from app.services.investor_discovery import discover_and_link_investors
+
+    INVESTOR_DISCOVERY_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Investor discovery not available: {e}")
+    INVESTOR_DISCOVERY_AVAILABLE = False
+    discover_and_link_investors = None
+
 logger = logging.getLogger(__name__)
 
 # Try to import Tavily for web search
@@ -223,13 +233,63 @@ Organization number:"""
 
 def lookup_or_create_company(company_name: str) -> Optional[str]:
     """
-    Look up company by name in Neo4j, or create with real org number if found via web search.
+    Look up company by name in Neo4j, reuse if found, or create with real org number if found via web search.
+    Enriches existing companies with new data if available.
+
     Returns organization_id (company_id in DB) or None if no valid org number found.
 
     IMPORTANT: Only creates companies with valid Swedish organization numbers.
     Does NOT create placeholder companies with invalid IDs.
     """
-    # First, try to find real org number via web search
+    # First, try to find existing company by name (to avoid duplicates)
+    existing_by_name = company_queries.find_company_by_name(company_name)
+    if existing_by_name:
+        existing_org_id = existing_by_name.get("company_id")
+        logger.info(f"Found existing company '{company_name}' with org_id {existing_org_id}, reusing and enriching")
+
+        # Enrich existing company with new data from web search
+        logger.info(f"Enriching existing company {existing_org_id} ({company_name}) with new data")
+        extracted_fields = extract_company_fields(company_name, existing_org_id, report_text=None)
+
+        if extracted_fields:
+            # Smart merge: only update fields where new data is better (non-empty) or existing is empty
+            for key, new_value in extracted_fields.items():
+                if key in ["_labels", "company_id"]:  # Skip internal fields
+                    continue
+                existing_value = existing_by_name.get(key)
+
+                # Update if: new value is non-empty AND (existing is empty/missing OR new value is more complete)
+                if new_value is not None:
+                    if isinstance(new_value, str) and new_value.strip():
+                        # For strings: update if existing is empty or new is longer (more complete)
+                        if not existing_value or (
+                            isinstance(existing_value, str) and len(new_value) > len(existing_value)
+                        ):
+                            existing_by_name[key] = new_value
+                    elif isinstance(new_value, list) and new_value:
+                        # For lists: merge and deduplicate
+                        existing_list = existing_by_name.get(key, []) or []
+                        merged_list = list(set(existing_list + new_value))
+                        existing_by_name[key] = merged_list
+                    elif not existing_value:  # For other types, update if existing is missing
+                        existing_by_name[key] = new_value
+
+            existing_by_name["company_id"] = existing_org_id
+            existing_by_name["name"] = company_name  # Ensure name is up to date
+            if "country_code" not in existing_by_name or not existing_by_name["country_code"]:
+                existing_by_name["country_code"] = "SE"
+
+            # Check if it's a Fund or Company
+            labels = existing_by_name.get("_labels", [])
+            if "Fund" in labels:
+                investor_queries.upsert_investor(existing_by_name)
+            else:
+                company_queries.upsert_company(existing_by_name)
+            logger.info(f"Enriched company {existing_org_id} with fields: {list(extracted_fields.keys())}")
+
+        return existing_org_id
+
+    # No existing company found by name, try to find org number via web search
     org_number = lookup_org_number_from_web(company_name)
 
     if not org_number or not is_valid_org_number(org_number):
@@ -240,13 +300,45 @@ def lookup_or_create_company(company_name: str) -> Optional[str]:
     org_id = org_number
     logger.info(f"Using real org number {org_id} for {company_name}")
 
-    # Check if company already exists
+    # Check if company already exists by org_id (in case name didn't match but org_id does)
     existing = company_queries.get_company(org_id)
     if existing:
-        return existing.get("company_id", org_id)
+        logger.info(f"Found existing company with org_id {org_id}, reusing and enriching")
+        # Enrich with new data (smart merge)
+        extracted_fields = extract_company_fields(company_name, org_id, report_text=None)
+        if extracted_fields:
+            # Smart merge: only update fields where new data is better
+            for key, new_value in extracted_fields.items():
+                if key in ["_labels", "company_id"]:
+                    continue
+                existing_value = existing.get(key)
+
+                if new_value is not None:
+                    if isinstance(new_value, str) and new_value.strip():
+                        if not existing_value or (
+                            isinstance(existing_value, str) and len(new_value) > len(existing_value)
+                        ):
+                            existing[key] = new_value
+                    elif isinstance(new_value, list) and new_value:
+                        existing_list = existing.get(key, []) or []
+                        existing[key] = list(set(existing_list + new_value))
+                    elif not existing_value:
+                        existing[key] = new_value
+
+            existing["company_id"] = org_id
+            existing["name"] = company_name
+            if "country_code" not in existing or not existing["country_code"]:
+                existing["country_code"] = "SE"
+
+            labels = existing.get("_labels", [])
+            if "Fund" in labels:
+                investor_queries.upsert_investor(existing)
+            else:
+                company_queries.upsert_company(existing)
+        return org_id
 
     # Extract company fields from web search before creating
-    logger.info(f"Extracting company fields for {company_name} ({org_id})")
+    logger.info(f"Creating new company {company_name} ({org_id})")
     extracted_fields = extract_company_fields(company_name, org_id, report_text=None)
 
     # Create company node with real org number and extracted fields
@@ -405,16 +497,69 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
     if not portfolio_data:
         logger.warning(f"No portfolio data extracted for {organization_id}")
         # Still try to extract company fields from report/web even if no portfolio
-        if report_text:
-            logger.info(f"Extracting company fields from report for {organization_id}")
-            extracted_fields = extract_company_fields(name, organization_id, report_text)
-            if extracted_fields:
-                existing = company_queries.get_company(organization_id) or {}
-                existing.update(extracted_fields)
-                existing["company_id"] = organization_id
-                existing["name"] = name
+        logger.info(f"Extracting company fields from report and web for {organization_id}")
+        extracted_fields = extract_company_fields(name, organization_id, report_text)
+
+        # Always upsert the company, even if no portfolio found
+        # If being ingested via /ingest endpoint, it's likely a Fund, so check existing data
+        existing = company_queries.get_company(organization_id) or {}
+
+        # Merge extracted fields
+        if extracted_fields:
+            existing.update(extracted_fields)
+
+        existing["company_id"] = organization_id
+        existing["name"] = name
+        if "country_code" not in existing or not existing["country_code"]:
+            existing["country_code"] = "SE"
+
+        # Check if this should be a Fund (if it already is, or if it has portfolio field set)
+        labels = existing.get("_labels", [])
+        is_fund = "Fund" in labels or existing.get("portfolio")
+
+        try:
+            if is_fund:
+                # Convert to Fund if not already, and upsert as Fund
+                if "Fund" not in labels:
+                    logger.info(f"Converting {organization_id} to Fund (has portfolio or is being ingested as fund)")
+                    company_queries.convert_company_to_fund(organization_id)
+                logger.info(f"Upserting Fund {organization_id} with data: {list(existing.keys())}")
+                investor_queries.upsert_investor(existing)
+                logger.info(
+                    f"Successfully upserted Fund {organization_id} with extracted fields: {list(extracted_fields.keys()) if extracted_fields else 'no new fields'}"
+                )
+            else:
+                logger.info(f"Upserting company {organization_id} with data: {list(existing.keys())}")
                 company_queries.upsert_company(existing)
-        return {"organization_id": organization_id, "portfolio": [], "companies_processed": 0}
+                logger.info(
+                    f"Successfully upserted company {organization_id} with extracted fields: {list(extracted_fields.keys()) if extracted_fields else 'no new fields'}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to upsert company/Fund {organization_id}: {e}", exc_info=True)
+            raise
+
+        # Discover and link investors even if no portfolio found
+        investor_results = None
+        if INVESTOR_DISCOVERY_AVAILABLE and discover_and_link_investors:
+            logger.info(f"Discovering investors for {organization_id} ({name})")
+            try:
+                investor_results = discover_and_link_investors(name, organization_id)
+                logger.info(
+                    f"Investor discovery complete: {investor_results.get('investors_linked', 0)} investors linked"
+                )
+            except Exception as e:
+                logger.warning(f"Investor discovery failed for {organization_id}: {e}", exc_info=True)
+                # Don't fail the entire ingestion if investor discovery fails
+        else:
+            logger.debug(f"Investor discovery not available, skipping for {organization_id}")
+
+        return {
+            "organization_id": organization_id,
+            "portfolio": [],
+            "companies_processed": 0,
+            "investors_discovered": investor_results.get("investors_discovered", 0) if investor_results else 0,
+            "investors_linked": investor_results.get("investors_linked", 0) if investor_results else 0,
+        }
 
     # Extract company fields from report and web search
     logger.info(f"Extracting company fields from report and web for {organization_id}")
@@ -443,7 +588,15 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
     # Ensure required fields have defaults
     if "country_code" not in existing or not existing["country_code"]:
         existing["country_code"] = "SE"
-    company_queries.upsert_company(existing)
+    try:
+        logger.info(f"Upserting company {organization_id} with portfolio and extracted fields: {list(existing.keys())}")
+        company_queries.upsert_company(existing)
+        logger.info(
+            f"Successfully upserted company {organization_id} with {len(portfolio_data_for_storage)} portfolio items"
+        )
+    except Exception as e:
+        logger.error(f"Failed to upsert company {organization_id}: {e}", exc_info=True)
+        raise
 
     # If portfolio was found, convert Company to Fund (add Fund label)
     if portfolio_entities:
@@ -469,8 +622,23 @@ def ingest_company_with_portfolio(organization_id: str, name: str) -> Dict[str, 
             }
         )
 
+    # Discover and link investors (who owns this company)
+    investor_results = None
+    if INVESTOR_DISCOVERY_AVAILABLE and discover_and_link_investors:
+        logger.info(f"Discovering investors for {organization_id} ({name})")
+        try:
+            investor_results = discover_and_link_investors(name, organization_id)
+            logger.info(f"Investor discovery complete: {investor_results.get('investors_linked', 0)} investors linked")
+        except Exception as e:
+            logger.warning(f"Investor discovery failed for {organization_id}: {e}", exc_info=True)
+            # Don't fail the entire ingestion if investor discovery fails
+    else:
+        logger.debug(f"Investor discovery not available, skipping for {organization_id}")
+
     return {
         "organization_id": organization_id,
         "portfolio": portfolio_entities,
         "companies_processed": len(visited) - 1,  # Exclude source
+        "investors_discovered": investor_results.get("investors_discovered", 0) if investor_results else 0,
+        "investors_linked": investor_results.get("investors_linked", 0) if investor_results else 0,
     }

@@ -89,6 +89,14 @@ Report content:
         
         import json
         extracted_data = json.loads(response_text)
+        # Ensure we return a dict
+        if not isinstance(extracted_data, dict):
+            logger.warning(f"Gemini returned non-dict JSON from report: {type(extracted_data)}, converting to dict")
+            if isinstance(extracted_data, list):
+                # Sometimes Gemini returns a list, wrap it
+                extracted_data = {"_raw": extracted_data}
+            else:
+                extracted_data = {}
         logger.info(f"Extracted {len(extracted_data)} fields from report for {company_name}")
         return extracted_data
         
@@ -170,6 +178,14 @@ Search results:
         
         import json
         extracted_data = json.loads(response_text)
+        # Ensure we return a dict
+        if not isinstance(extracted_data, dict):
+            logger.warning(f"Gemini returned non-dict JSON: {type(extracted_data)}, converting to dict")
+            if isinstance(extracted_data, list):
+                # Sometimes Gemini returns a list, wrap it
+                extracted_data = {"_raw": extracted_data}
+            else:
+                extracted_data = {}
         logger.info(f"Extracted {len(extracted_data)} fields from web search for {company_name}")
         return extracted_data
         
@@ -291,6 +307,10 @@ def extract_company_fields(company_name: str, organization_id: str, report_text:
     web_data = {}
     try:
         web_data = extract_company_data_from_web(company_name, organization_id)
+        # Ensure web_data is a dictionary
+        if not isinstance(web_data, dict):
+            logger.warning(f"Web extraction returned non-dict type: {type(web_data)}, converting to empty dict")
+            web_data = {}
         logger.info(f"Web extraction returned {len(web_data)} fields: {list(web_data.keys())}")
     except Exception as e:
         logger.error(f"Error extracting from web for {company_name}: {e}", exc_info=True)
