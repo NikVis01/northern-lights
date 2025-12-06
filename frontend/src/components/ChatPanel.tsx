@@ -108,7 +108,7 @@ const ChatPanel = () => {
 
       const data = await response.json();
 
-      // Use the backend's markdown-formatted message directly
+      // Use the backend's parsed message directly
       const responseMessage = data.message;
 
       const assistantMessage: Message = {

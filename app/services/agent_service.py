@@ -2,15 +2,17 @@
 LangChain agent service for company queries with database search and validation.
 
 Main flow:
-1. Validate input (company name ≤5 words or org ID format)
-2. Search database for company
-3. If found → Query Neo4j agent for details
+1. Agentically classify query (using Gemini) - simple lookup vs complex query
+2. If simple → Search database and handle directly
+3. If complex → Forward to Neo4j agent
 4. If not found → Trigger ingestion (with web lookup for company names)
 """
 
 import asyncio
+
 import logging
 import os
+import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 
@@ -26,22 +28,172 @@ AURA_CLIENT_ID = os.getenv("AURA_CLIENT_ID")
 AURA_CLIENT_SECRET = os.getenv("AURA_CLIENT_SECRET")
 
 
+def extract_final_text(log):
+    """
+    Extract the final user-facing text from an agent event log.
+    Supports logs that include:
+    - {"text": "..."}
+    - {"message": "..."}
+    - {"output": {"text": "..."}}
+
+    Returns: str or None
+    """
+    if not isinstance(log, list):
+        return None
+
+    def get_text(entry):
+        if not isinstance(entry, dict):
+            return None
+
+        # PRIORITY 1: Direct text response (the final answer)
+        # This is the final user-facing message from the agent
+        if entry.get("type") == "text" and entry.get("text"):
+            return entry["text"]
+
+        # PRIORITY 2: Common alt key
+        if entry.get("message") and not entry.get("type"):
+            return entry["message"]
+
+        # PRIORITY 3: Sometimes tool outputs embed text
+        # Only use this if no type field (avoid matching tool results)
+        if not entry.get("type"):
+            output = entry.get("output")
+            if isinstance(output, dict) and isinstance(output.get("text"), str):
+                return output["text"]
+
+        return None
+
+    # Search from the end backwards
+    for entry in reversed(log):
+        text = get_text(entry)
+        if text:
+            return text.strip()
+
+    return None
+
+
+# Try to import Gemini for agentic query classification
+try:
+    import google.generativeai as genai
+
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        try:
+            gemini_model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        except:
+            gemini_model = genai.GenerativeModel("gemini-1.5-pro")
+    else:
+        gemini_model = None
+        logger.warning("GEMINI_API_KEY not set - query classification will fall back to pattern matching")
+except ImportError:
+    gemini_model = None
+    logger.warning("Gemini not available - query classification will fall back to pattern matching")
+
+
 class InputValidator:
-    """Validates user input for company queries"""
+    """Agentically validates user input and determines query type using Gemini"""
 
     # Organization ID pattern: UUID format OR Swedish org number (10 digits with optional dash)
-    # UUID: 8-4-4-4-12 hex digits (e.g., "0818261f-2208-5ebc-9946-2797cc0d74d5")
-    # Swedish org: 10 digits with optional dash (e.g., "556043-4200" or "5560434200")
     UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
     SWEDISH_ORG_PATTERN = re.compile(r"^\d{6}-?\d{4}$")
 
-    # Company name pattern: 1-5 words separated by spaces
-    COMPANY_NAME_PATTERN = re.compile(r"^[A-Za-zÅÄÖåäö0-9\s&\-\.]{1,100}$")
+    @classmethod
+    def _classify_query_agentic(cls, query: str) -> dict[str, any]:
+        """
+        Use Gemini to agentically classify the query type.
+        Handles misspellings and understands intent.
+        """
+        if not gemini_model:
+            # Fallback to pattern matching if Gemini not available
+            return cls._classify_query_fallback(query)
+
+        try:
+            prompt = f"""You are a query classifier for a Swedish company and fund database system.
+
+Analyze this user query and classify it into one of these types:
+
+1. "org_id" - The query is clearly a Swedish organization number (10 digits, format XXXXXX-XXXX) or UUID
+2. "company_name" - The query is a simple company name lookup (1-5 words, just asking to find a company)
+3. "general_query" - The query is a complex question that requires graph traversal, relationship analysis, or multi-step reasoning (e.g., "Who owns X?", "What else does Y own?", "Show me all funds in tech sector")
+
+Examples:
+- "556043-4200" → org_id
+- "Investor AB" → company_name
+- "ericsson" → company_name (simple lookup)
+- "Who owns ericsson?" → general_query (complex question)
+- "Who owns ericsson and what else do they also own?" → general_query (multi-part question)
+- "Show me all companies owned by Investor AB" → general_query (graph query)
+- "What funds invest in tech startups?" → general_query (complex filter/analysis)
+
+IMPORTANT:
+- Handle misspellings intelligently (e.g., "ericsson" vs "eriksson" - both are company_name)
+- Don't rely on question marks - understand intent
+- Simple lookups (just a company name) should be company_name
+- Complex questions requiring graph analysis should be general_query
+
+Query: "{query}"
+
+Return JSON only with this structure:
+{{
+    "type": "org_id" | "company_name" | "general_query",
+    "confidence": 0.0-1.0,
+    "reasoning": "brief explanation"
+}}
+"""
+
+            response = gemini_model.generate_content(
+                prompt, generation_config={"response_mime_type": "application/json"}
+            )
+
+            response_text = response.text.strip()
+            # Remove markdown code blocks if present
+            if response_text.startswith("```"):
+                lines = response_text.split("\n")
+                response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+
+            classification = json.loads(response_text)
+            query_type = classification.get("type", "general_query")
+            confidence = classification.get("confidence", 0.5)
+            reasoning = classification.get("reasoning", "")
+
+            logger.debug(
+                f"Agentic classification: type={query_type}, confidence={confidence:.2f}, reasoning={reasoning}"
+            )
+
+            return {"type": query_type, "confidence": confidence, "reasoning": reasoning}
+
+        except Exception as e:
+            logger.warning(f"Agentic classification failed: {e}, falling back to pattern matching")
+            return cls._classify_query_fallback(query)
+
+    @classmethod
+    def _classify_query_fallback(cls, query: str) -> dict[str, any]:
+        """Fallback pattern-based classification if Gemini fails"""
+        query = query.strip()
+
+        # Check if it's a UUID
+        if cls.UUID_PATTERN.match(query):
+            return {"type": "org_id", "confidence": 1.0, "reasoning": "Matches UUID pattern"}
+
+        # Check if it's a Swedish organization number
+        cleaned_org_id = re.sub(r"[-\s]", "", query)
+        if cls.SWEDISH_ORG_PATTERN.match(query) or (len(cleaned_org_id) == 10 and cleaned_org_id.isdigit()):
+            formatted = f"{cleaned_org_id[:6]}-{cleaned_org_id[6:]}"
+            return {"type": "org_id", "confidence": 1.0, "reasoning": "Matches Swedish org number pattern"}
+
+        # Default to general_query for fallback (safer to forward to Neo4j agent)
+        return {"type": "general_query", "confidence": 0.3, "reasoning": "Fallback: defaulting to general query"}
 
     @classmethod
     def validate_input(cls, query: str) -> dict[str, any]:
         """
-        Validate user input and determine query type.
+        Agentically validate user input and determine query type.
+
+        Types:
+        - "org_id": UUID or Swedish organization number
+        - "company_name": Simple company name lookup
+        - "general_query": Complex question requiring Neo4j agent
 
         Returns:
             dict with keys: valid (bool), type (str), cleaned (str), error (str)
@@ -51,42 +203,27 @@ class InputValidator:
         if not query:
             return {"valid": False, "type": None, "cleaned": None, "error": "Empty query"}
 
-        # Check if it's a UUID
-        if cls.UUID_PATTERN.match(query):
-            return {"valid": True, "type": "org_id", "cleaned": query.lower(), "error": None}
+        # Use agentic classification
+        classification = cls._classify_query_agentic(query)
+        query_type = classification["type"]
 
-        # Check if it's a Swedish organization number
-        cleaned_org_id = re.sub(r"[-\s]", "", query)
-        if cls.SWEDISH_ORG_PATTERN.match(query) or (len(cleaned_org_id) == 10 and cleaned_org_id.isdigit()):
-            # Format as XXXXXX-XXXX
-            formatted = f"{cleaned_org_id[:6]}-{cleaned_org_id[6:]}"
-            return {"valid": True, "type": "org_id", "cleaned": formatted, "error": None}
+        # Clean and format based on type
+        if query_type == "org_id":
+            # Format Swedish org numbers consistently
+            cleaned_org_id = re.sub(r"[-\s]", "", query)
+            if len(cleaned_org_id) == 10 and cleaned_org_id.isdigit():
+                cleaned = f"{cleaned_org_id[:6]}-{cleaned_org_id[6:]}"
+            else:
+                cleaned = query.lower()  # UUID
+            return {"valid": True, "type": "org_id", "cleaned": cleaned, "error": None}
 
-        # Check if it's a company name (1-5 words)
-        words = query.split()
-        if len(words) > 5:
-            return {
-                "valid": False,
-                "type": None,
-                "cleaned": None,
-                "error": (
-                    f"Company name too long ({len(words)} words). "
-                    "Please use 5 words or less, or provide an organization number."
-                ),
-            }
-
-        if cls.COMPANY_NAME_PATTERN.match(query):
+        elif query_type == "company_name":
+            # Keep original query for company name (handles misspellings)
             return {"valid": True, "type": "company_name", "cleaned": query, "error": None}
 
-        return {
-            "valid": False,
-            "type": None,
-            "cleaned": None,
-            "error": (
-                "Invalid input format. Please provide a company name (1-5 words) "
-                "or organization ID (UUID or Swedish org number)."
-            ),
-        }
+        else:  # general_query
+            # Keep original query for forwarding to Neo4j agent
+            return {"valid": True, "type": "general_query", "cleaned": query, "error": None}
 
 
 class CompanyAgentTools:
@@ -105,7 +242,6 @@ class CompanyAgentTools:
             return {k: self._convert_neo4j_to_json(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [self._convert_neo4j_to_json(item) for item in obj]
-        return obj
 
     async def search_database(self, query: str) -> str:
         """
@@ -117,7 +253,6 @@ class CompanyAgentTools:
         Returns:
             JSON string with search results
         """
-        import json
 
         # Validate input
         validation = InputValidator.validate_input(query)
@@ -181,24 +316,45 @@ class CompanyAgentTools:
             logger.warning("AURA_CLIENT_ID or AURA_CLIENT_SECRET not configured")
             return None
 
+        # According to Neo4j Aura API docs: https://neo4j.com/docs/aura/classic/platform/api/authentication/
+        # The token endpoint requires HTTP Basic Authentication (not credentials in body)
+        # Client ID = username, Client Secret = password
         try:
             token_url = "https://api.neo4j.io/oauth/token"
 
-            data = {
-                "grant_type": "client_credentials",
-                "client_id": AURA_CLIENT_ID,
-                "client_secret": AURA_CLIENT_SECRET,
-                "audience": "neo4j://api.neo4j.io",
-            }
+            # HTTP Basic Auth: base64 encode client_id:client_secret
+            import base64
+
+            credentials = base64.b64encode(f"{AURA_CLIENT_ID}:{AURA_CLIENT_SECRET}".encode()).decode()
 
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(token_url, data=data)
+                response = await client.post(
+                    token_url,
+                    headers={
+                        "Authorization": f"Basic {credentials}",
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    data={"grant_type": "client_credentials"},
+                )
                 response.raise_for_status()
                 token_data = response.json()
-                return token_data.get("access_token")
+                access_token = token_data.get("access_token")
+                if access_token:
+                    logger.info("Successfully obtained Aura API access token")
+                    return access_token
+                else:
+                    logger.error(f"Token response missing access_token: {token_data}")
+                    return None
 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Aura API token endpoint returned {e.response.status_code}: {e.response.text[:200]}")
+            if e.response.status_code == 401:
+                logger.error("Invalid credentials - check AURA_CLIENT_ID and AURA_CLIENT_SECRET")
+            elif e.response.status_code == 403:
+                logger.error("Credentials may not have permission to access the API")
+            return None
         except Exception as e:
-            logger.error(f"Error fetching Neo4j OAuth token: {e}")
+            logger.error(f"Error obtaining Aura API token: {e}", exc_info=True)
             return None
 
     async def query_neo4j_agent(self, company_data: str) -> str:
@@ -211,7 +367,6 @@ class CompanyAgentTools:
         Returns:
             JSON string with Neo4j agent response
         """
-        import json
 
         if not self.neo_agent_url:
             return json.dumps({"error": "NEO_AGENT_INVOKE not configured"})
@@ -229,12 +384,16 @@ class CompanyAgentTools:
             # Prepare request with Bearer token
             headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-            payload = {
-                "messages": [{"role": "user", "content": f"Find information about company with ID: {company_id}"}]
-            }
+            payload = {"input": f"Find information about company with ID: {company_id}"}
+
+            logger.debug(f"Company query payload: {payload}")
+            logger.debug(f"Company query headers: {dict(headers)}")
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(self.neo_agent_url, json=payload, headers=headers)
+                logger.debug(f"Company query response status: {response.status_code}")
+                if response.status_code != 200:
+                    logger.debug(f"Company query response body: {response.text[:500]}")
                 response.raise_for_status()
                 return json.dumps(response.json())
 
@@ -243,6 +402,105 @@ class CompanyAgentTools:
             return json.dumps({"error": f"Neo4j agent authentication failed: {e.response.status_code}"})
         except Exception as e:
             logger.error(f"Error querying Neo4j agent: {e}")
+            return json.dumps({"error": f"Neo4j agent query failed: {str(e)}"})
+
+    async def query_neo4j_agent_general(self, query: str) -> str:
+        """
+        Query Neo4j agent with a general question/query.
+        Extracts only the final text response from the agent log.
+
+        Args:
+            query: Natural language question or query
+
+        Returns:
+            JSON string with extracted text response or error
+        """
+        import json
+
+        logger.info(f"Querying Neo4j agent with general query: {query}")
+
+        if not self.neo_agent_url:
+            return json.dumps({"error": "NEO_AGENT_INVOKE not configured"})
+
+        token = await self._get_neo4j_token()
+        if not token:
+            error_msg = "Failed to obtain Neo4j OAuth token. Check AURA_CLIENT_ID and AURA_CLIENT_SECRET."
+            return json.dumps({"error": error_msg})
+
+        try:
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            payload = {"input": query}
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(self.neo_agent_url, json=payload, headers=headers)
+                response.raise_for_status()
+
+                # Get the raw response
+                raw_result = response.json()
+                logger.debug(f"Raw Neo4j agent response type: {type(raw_result)}")
+                logger.debug(
+                    f"Raw Neo4j agent response keys: {raw_result.keys() if isinstance(raw_result, dict) else 'not a dict'}"
+                )
+
+                # Handle wrapper format with 'content' field
+                if isinstance(raw_result, dict) and "content" in raw_result:
+                    content = raw_result["content"]
+                    logger.debug(f"Found 'content' field, type: {type(content)}")
+
+                    # Content should be the actual log array
+                    if isinstance(content, list):
+                        final_text = extract_final_text(content)
+                        if final_text:
+                            logger.info(f"✓ Extracted final text from agent log")
+                            return json.dumps({"text": final_text})
+                        else:
+                            logger.error(f"❌ Failed to extract text from {len(content)} log items")
+                            logger.debug(f"Log items: {content}")
+                            return json.dumps({"error": "No text response found in agent log"})
+
+                    # Content might be a string already
+                    elif isinstance(content, str):
+                        logger.info(f"✓ Content is already a string")
+                        return json.dumps({"text": content})
+
+                    else:
+                        logger.error(f"Unexpected content type: {type(content)}")
+                        return json.dumps({"error": f"Unexpected content type: {type(content)}"})
+
+                # Handle direct list format (original behavior)
+                elif isinstance(raw_result, list):
+                    final_text = extract_final_text(raw_result)
+                    if final_text:
+                        logger.info(f"✓ Extracted final text from agent log")
+                        return json.dumps({"text": final_text})
+                    else:
+                        logger.error(f"❌ Failed to extract text from {len(raw_result)} log items")
+                        return json.dumps({"error": "No text response found in agent log"})
+
+                # Handle direct dict with text field
+                elif isinstance(raw_result, dict) and raw_result.get("text"):
+                    logger.info(f"✓ Found direct text field")
+                    return json.dumps({"text": raw_result["text"]})
+
+                else:
+                    logger.error(
+                        f"Unexpected response format. Keys: {list(raw_result.keys()) if isinstance(raw_result, dict) else 'not a dict'}"
+                    )
+                    return json.dumps({"error": "Invalid response format from agent"})
+
+        except httpx.TimeoutException:
+            logger.error(f"Neo4j agent request timed out after 60 seconds")
+            return json.dumps({"error": "Query timed out. The Neo4j agent took too long to respond."})
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Neo4j agent HTTP error: {e.response.status_code} - {e.response.text}")
+            return json.dumps(
+                {"error": f"Neo4j agent returned error {e.response.status_code}: {e.response.text[:200]}"}
+            )
+        except httpx.RequestError as e:
+            logger.error(f"Neo4j agent request error: {e}")
+            return json.dumps({"error": f"Failed to connect to Neo4j agent: {str(e)}"})
+        except Exception as e:
+            logger.error(f"Error querying Neo4j agent: {e}", exc_info=True)
             return json.dumps({"error": f"Neo4j agent query failed: {str(e)}"})
 
     async def trigger_ingestion(self, query: str) -> str:
@@ -272,8 +530,6 @@ class CompanyAgentTools:
             logger.info(f"Looking up organization number for company name: {cleaned_query}")
 
             try:
-                import json
-
                 from app.services.portfolio_ingestion import (
                     gemini_model,
                     lookup_org_number_from_web,
@@ -335,8 +591,6 @@ class CompanyAgentTools:
                 f"Ingestion completed for {organization_id}: {len(result['portfolio'])} portfolio companies found"
             )
 
-            import json
-
             return json.dumps(
                 {
                     "status": "completed",
@@ -348,7 +602,6 @@ class CompanyAgentTools:
 
         except Exception as e:
             logger.error(f"Error during ingestion for {organization_id}: {e}")
-            import json
 
             return json.dumps({"status": "error", "error": str(e), "organization_id": organization_id})
 
@@ -365,6 +618,20 @@ class AgentResponse:
         ingestion_result: dict[str, any] | None = None,
         error: str | None = None,
     ):
+        # Ensure message is always a string
+        if not isinstance(message, str):
+            if isinstance(message, list):
+                # If it's a list, try to extract text from it
+
+                for item in reversed(message):
+                    if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
+                        message = str(item["text"])
+                        break
+                else:
+                    message = json.dumps(message)  # Fallback: stringify the list
+            else:
+                message = str(message)
+
         self.message = message
         self.company_found = company_found
         self.company_data = company_data
@@ -388,17 +655,20 @@ async def process_query(query: str) -> AgentResponse:
     Process user query using LangChain agent.
 
     Flow:
-    1. Validate input
-    2. Search database
-    3. If found → Query Neo4j agent
-    4. If not found → Trigger ingestion (if org ID provided)
+    1. Validate input and determine type
+    2. If general_query → Query Neo4j agent directly
+    3. If company_name/org_id → Search database
+    4. If found → Query Neo4j agent
+    5. If not found → Trigger ingestion (if org ID provided)
 
     Args:
-        query: User query (company name or organization ID)
+        query: User query (company name, organization ID, or general question)
 
     Returns:
         AgentResponse with results
     """
+    import json  # ← Move import to the TOP of the function
+
     logger.info(f"Processing query: {query}")
 
     # Step 1: Validate input
@@ -409,17 +679,50 @@ async def process_query(query: str) -> AgentResponse:
     query_type = validation["type"]
     cleaned_query = validation["cleaned"]
 
-    # Step 2: Search database
     tools = CompanyAgentTools()
 
     try:
-        # Search database
-        search_result_str = await tools.search_database(cleaned_query)
-        import json
+        # Step 2: If it's a general query, send directly to Neo4j agent
+        if query_type == "general_query":
+            logger.info(f"Processing as general query: {cleaned_query}")
 
+            # Query Neo4j agent - now returns simplified {"text": "..."} format
+            neo4j_result_str = await tools.query_neo4j_agent_general(cleaned_query)
+
+            try:
+                neo4j_result = json.loads(neo4j_result_str)
+
+                # Check for error
+                if neo4j_result.get("error"):
+                    return AgentResponse(
+                        message=f"Error: {neo4j_result['error']}",
+                        company_found=False,
+                        error=neo4j_result["error"],
+                    )
+
+                # Extract text from simplified response
+                message = neo4j_result.get("text", "No response text found.")
+                logger.info(f"✓ Received text response (length: {len(message)})")
+
+                return AgentResponse(
+                    message=message,
+                    company_found=False,
+                    company_data=None,
+                )
+
+            except json.JSONDecodeError:
+                # If not JSON, return as plain text
+                return AgentResponse(
+                    message=str(neo4j_result_str),
+                    company_found=False,
+                    company_data=None,
+                )
+
+        # Step 3: For company_name/org_id, search database
+        search_result_str = await tools.search_database(cleaned_query)
         search_result = json.loads(search_result_str)
 
-        # Step 3: If found, query Neo4j agent
+        # Step 4: If found, query Neo4j agent
         if search_result.get("found"):
             company_data = search_result.get("data")
             company_name = company_data.get("name", "Unknown")
@@ -427,15 +730,11 @@ async def process_query(query: str) -> AgentResponse:
 
             # Build detailed company info in markdown
             company_details = f"## ✓ Company Found: **{company_name}**\n\n"
-
-            # Add organization ID
             company_details += f"**Organization ID:** `{company_id}`\n\n"
 
-            # Add description if available
             if company_data.get("description"):
                 company_details += f"**Description:**\n{company_data['description']}\n\n"
 
-            # Add sectors if available
             if company_data.get("sectors") and len(company_data["sectors"]) > 0:
                 sectors = company_data["sectors"]
                 if isinstance(sectors, list):
@@ -443,7 +742,6 @@ async def process_query(query: str) -> AgentResponse:
                 else:
                     company_details += f"**Sectors:** {sectors}\n\n"
 
-            # Add other details
             details_added = False
             if company_data.get("website"):
                 company_details += f"**Website:** [{company_data['website']}]({company_data['website']})\n"
@@ -462,11 +760,13 @@ async def process_query(query: str) -> AgentResponse:
                 company_details += "\n"
 
             # Query Neo4j agent for additional information
+            logger.info(f"Querying Neo4j agent for additional info about {company_name} ({company_id})")
             neo4j_result_str = await tools.query_neo4j_agent(json.dumps(company_data))
-            neo4j_result = json.loads(neo4j_result_str)
 
-            if neo4j_result.get("error"):
-                # Fallback to database data if Neo4j agent fails
+            try:
+                neo4j_result = json.loads(neo4j_result_str)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Neo4j agent response is not JSON: {e}, using database data only")
                 company_details += "*Showing information from our database.*"
                 return AgentResponse(
                     message=company_details,
@@ -474,7 +774,16 @@ async def process_query(query: str) -> AgentResponse:
                     company_data=company_data,
                 )
 
-            # Return Neo4j agent response with company details
+            if neo4j_result.get("error"):
+                logger.warning(f"Neo4j agent returned error: {neo4j_result.get('error')}, using database data only")
+                company_details += "*Showing information from our database.*"
+                return AgentResponse(
+                    message=company_details,
+                    company_found=True,
+                    company_data=company_data,
+                )
+
+            logger.info(f"Neo4j agent provided additional insights for {company_name}")
             company_details += "*Additional insights from our knowledge graph...*"
             return AgentResponse(
                 message=company_details,
@@ -482,10 +791,8 @@ async def process_query(query: str) -> AgentResponse:
                 company_data=neo4j_result.get("data", company_data),
             )
 
-        # Step 4: Not found - trigger ingestion
-        # Now supports both org ID and company name (via web lookup)
+        # Step 5: Not found - trigger ingestion
         logger.info(f"Company not found with query '{cleaned_query}' - triggering ingestion")
-
         ingestion_result_str = await tools.trigger_ingestion(cleaned_query)
         ingestion_result = json.loads(ingestion_result_str)
 
@@ -494,7 +801,6 @@ async def process_query(query: str) -> AgentResponse:
             org_id = ingestion_result.get("organization_id")
             companies_processed = ingestion_result.get("companies_processed", 0)
 
-            # Build progress message with markdown
             if query_type == "company_name":
                 message = (
                     f"## Company Not Found: *{cleaned_query}*\n\n"
@@ -524,9 +830,7 @@ async def process_query(query: str) -> AgentResponse:
         else:
             error_msg = ingestion_result.get("error", "Unknown error")
 
-            # Check if it's a Tavily/API configuration error - show simplified message
             if "Agent ingest is not possible" in error_msg:
-                # Show user-friendly message without technical details
                 message = (
                     f"## ❌ Company Not Found\n\n**{cleaned_query}**\n\nAgent ingest is not possible, try again later."
                 )
