@@ -80,6 +80,10 @@ async def get_all_entities(api_key: ApiKeyDep):
                 "id": c["company_id"],
                 "name": c.get("name", "Unknown Company"),
                 "type": "company",
+                "orgNumber": c.get("company_id", ""),
+                "sector": c.get("sectors", ["Unknown"])[0] if c.get("sectors") else "Unknown",
+                "country": c.get("country_code", "SE"),
+                "cluster": 1,  # Placeholder
                 # Default value or calculate based on relationships/page rank later
                 "val": 10,
             }
@@ -87,7 +91,18 @@ async def get_all_entities(api_key: ApiKeyDep):
 
     # Process investors
     for inv in investors:
-        nodes.append({"id": inv["company_id"], "name": inv.get("name", "Unknown Investor"), "type": "fund", "val": 15})
+        nodes.append(
+            {
+                "id": inv["company_id"],
+                "name": inv.get("name", "Unknown Investor"),
+                "type": "fund",
+                "orgNumber": inv.get("company_id", ""),
+                "sector": inv.get("sectors", ["Unknown"])[0] if inv.get("sectors") else "Unknown",
+                "country": inv.get("country_code", "SE"),
+                "cluster": 1,  # Placeholder
+                "val": 15,
+            }
+        )
 
     # 2. Fetch edges
     rels = relationship_queries.get_all_relationships()

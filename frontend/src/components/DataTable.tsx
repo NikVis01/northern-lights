@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Building2, Landmark, Users, Search, ArrowUpDown, ChevronDown, ExternalLink } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -20,6 +20,12 @@ import { Badge } from "./ui/badge";
 import { ScrollArea } from "./ui/scroll-area";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useSelectedEntity } from "@/contexts/SelectedEntityContext";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 
 type EntityType = "company" | "fund";
 type FilterType = "all" | "companies" | "investors";
@@ -35,26 +41,7 @@ interface Entity {
   country: string;
 }
 
-const sampleData: Entity[] = [
-  { id: "1", name: "Volvo AB", type: "company", orgNumber: "556012-5790", sector: "Automotive", cluster: 1, ownership: "Geely Holdings (82%)", country: "SE" },
-  { id: "2", name: "Geely Holdings", type: "fund", orgNumber: "HK-0175", sector: "Investment", cluster: 1, country: "HK" },
-  { id: "3", name: "Spotify AB", type: "company", orgNumber: "556703-7485", sector: "Technology", cluster: 2, ownership: "Tencent (9%)", country: "SE" },
-  { id: "4", name: "Tencent Holdings", type: "fund", orgNumber: "HK-0700", sector: "Investment", cluster: 2, country: "HK" },
-  { id: "5", name: "Ericsson AB", type: "company", orgNumber: "556016-0680", sector: "Telecom", cluster: 3, ownership: "Investor AB (22%)", country: "SE" },
-  { id: "6", name: "Investor AB", type: "fund", orgNumber: "556013-8298", sector: "Investment", cluster: 1, country: "SE" },
-  { id: "7", name: "H&M Group", type: "company", orgNumber: "556042-7220", sector: "Retail", cluster: 4, ownership: "Persson Family (45%)", country: "SE" },
-  { id: "8", name: "Persson Family", type: "fund", orgNumber: "N/A", sector: "Family Office", cluster: 4, country: "SE" },
-  { id: "9", name: "Klarna AB", type: "company", orgNumber: "556737-0431", sector: "FinTech", cluster: 2, ownership: "Sequoia (12%)", country: "SE" },
-  { id: "10", name: "Sequoia Capital", type: "fund", orgNumber: "US-SEQ", sector: "Venture Capital", cluster: 2, country: "US" },
-  { id: "11", name: "IKEA Holding", type: "company", orgNumber: "556074-7569", sector: "Retail", cluster: 5, ownership: "Stichting INGKA (100%)", country: "SE" },
-  { id: "12", name: "Stichting INGKA", type: "fund", orgNumber: "NL-INGKA", sector: "Foundation", cluster: 5, country: "NL" },
-  { id: "13", name: "Northvolt AB", type: "company", orgNumber: "559015-8894", sector: "CleanTech", cluster: 3, ownership: "Goldman Sachs (15%)", country: "SE" },
-  { id: "14", name: "Goldman Sachs", type: "fund", orgNumber: "US-GS", sector: "Investment Bank", cluster: 3, country: "US" },
-  { id: "15", name: "Atlas Copco", type: "company", orgNumber: "556014-2720", sector: "Industrial", cluster: 1, ownership: "Investor AB (17%)", country: "SE" },
-  { id: "16", name: "Einride AB", type: "company", orgNumber: "559123-4567", sector: "Autonomous", cluster: 3, country: "SE" },
-  { id: "17", name: "Peltarion AB", type: "company", orgNumber: "559234-5678", sector: "AI/ML", cluster: 2, country: "SE" },
-  { id: "18", name: "Hedvig AB", type: "company", orgNumber: "559345-6789", sector: "InsurTech", cluster: 2, country: "SE" },
-];
+
 
 type SortField = "name" | "sector" | "cluster" | "country";
 type SortDirection = "asc" | "desc";
@@ -66,9 +53,53 @@ const DataTable = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [entities, setEntities] = useState<Entity[]>([]);
+
+  useEffect(() => {
+    const fetchEntities = async () => {
+      try {
+        const response = await fetch("/api/v1/search/all", {
+          headers: {
+            "access_token": "dev"
+          }
+        });
+        
+        if (response.ok) {
+          const { nodes, links } = await response.json();
+          
+          // Map for lookup
+          const nodeMap = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
+          
+          const processedEntities = nodes.map((node: any) => {
+            const nodeLinks = links.filter((l: any) => l.target === node.id);
+            const ownership = nodeLinks.map((l: any) => {
+              const sourceName = nodeMap.get(l.source)?.name || "Unknown";
+              return `${sourceName} (${l.ownership}%)`;
+            }).join(", ");
+            
+            return {
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              orgNumber: node.orgNumber || "-",
+              sector: node.sector && node.sector !== "Unknown" ? node.sector : "—",
+              cluster: node.cluster || 0,
+              country: node.country || "Unknown",
+              ownership: ownership || undefined
+            };
+          });
+          setEntities(processedEntities);
+        }
+      } catch (error) {
+        console.error("Failed to fetch entities:", error);
+      }
+    };
+
+    fetchEntities();
+  }, []);
 
   const filteredData = useMemo(() => {
-    let data = sampleData;
+    let data = entities;
 
     if (filter === "companies") {
       data = data.filter((e) => e.type === "company");
@@ -80,15 +111,15 @@ const DataTable = () => {
       const query = searchQuery.toLowerCase();
       data = data.filter(
         (e) =>
-          e.name.toLowerCase().includes(query) ||
-          e.sector.toLowerCase().includes(query) ||
-          e.orgNumber.toLowerCase().includes(query)
+          (e.name && e.name.toLowerCase().includes(query)) ||
+          (e.sector && e.sector.toLowerCase().includes(query)) ||
+          (e.orgNumber && e.orgNumber.toLowerCase().includes(query))
       );
     }
 
     data = [...data].sort((a, b) => {
-      const aVal = a[sortField];
-      const bVal = b[sortField];
+      const aVal = a[sortField] || "";
+      const bVal = b[sortField] || "";
       if (typeof aVal === "string" && typeof bVal === "string") {
         return sortDirection === "asc"
           ? aVal.localeCompare(bVal)
@@ -101,7 +132,7 @@ const DataTable = () => {
     });
 
     return data;
-  }, [filter, searchQuery, sortField, sortDirection]);
+  }, [entities, filter, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -204,13 +235,22 @@ const DataTable = () => {
                 onClick={() => handleRowClick(entity)}
               >
                 <TableCell>
-                  <div className={`w-5 h-5 rounded flex items-center justify-center ${entity.type === "fund" ? "bg-muted-foreground/20" : "bg-foreground/10"}`}>
-                    {entity.type === "fund" ? (
-                      <Landmark className="w-3 h-3 text-muted-foreground" />
-                    ) : (
-                      <Building2 className="w-3 h-3 text-foreground/70" />
-                    )}
-                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className={`w-5 h-5 rounded flex items-center justify-center ${entity.type === "fund" ? "bg-muted-foreground/20" : "bg-foreground/10"}`}>
+                          {entity.type === "fund" ? (
+                            <Landmark className="w-3 h-3 text-muted-foreground" />
+                          ) : (
+                            <Building2 className="w-3 h-3 text-foreground/70" />
+                          )}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{entity.type === "fund" ? "Fund" : "Company"}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </TableCell>
                 <TableCell className="font-medium text-foreground text-sm">{entity.name}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{entity.orgNumber}</TableCell>

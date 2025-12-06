@@ -1,6 +1,7 @@
 import logging
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.routers import companies, investors, relationships, search
@@ -36,11 +37,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-from fastapi.middleware.cors import CORSMiddleware
-
+# CORS Middleware - Must be added before routes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For hackathon/dev, allow all. stricter in prod.
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,4 +59,4 @@ except Exception as e:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": settings.api_version}
+    return {"status": "ok", "version": settings.api_version, "cors": "enabled"}

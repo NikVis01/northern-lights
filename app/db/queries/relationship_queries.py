@@ -176,7 +176,7 @@ def get_all_relationships() -> List[Dict[str, Any]]:
     MATCH (s)-[r:OWNS]->(t)
     WHERE (s:Fund OR s:Company) AND (t:Fund OR t:Company)
     RETURN s.company_id as source, t.company_id as target, 
-           coalesce(r.share_percentage, r.ownership_pct, 0) as ownership
+           coalesce(r.share_percentage, 0) as ownership
     """
 
     driver = get_driver()

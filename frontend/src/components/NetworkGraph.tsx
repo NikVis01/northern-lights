@@ -14,6 +14,9 @@ interface Node {
   val?: number;
   x?: number;
   y?: number;
+  orgNumber?: string;
+  sector?: string;
+  country?: string;
 }
 
 interface Link {
@@ -43,14 +46,13 @@ const NetworkGraph = () => {
 
   // Graph data state
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
-  const [isLoading, setIsLoading] = useState(true);
 
   // Fetch graph data
   useEffect(() => {
     const fetchGraphData = async () => {
       try {
-        // TODO: Use configured API URL from environment
-        const response = await fetch("http://localhost:8000/v1/search/all", {
+        // Use proxy URL to avoid CORS
+        const response = await fetch("/api/v1/search/all", {
           headers: {
             "access_token": "dev" // Using dev token for now as per plan
           }
@@ -65,8 +67,6 @@ const NetworkGraph = () => {
         setGraphData(data);
       } catch (error) {
         console.error("Error fetching graph data:", error);
-      } finally {
-        setIsLoading(false);
       }
     };
 
@@ -112,14 +112,20 @@ const NetworkGraph = () => {
         fgRef.current.zoom(2.5, 800);
       }
     }
-  }, [selectedEntityId]);
+  }, [selectedEntityId, graphData]);
 
   const handleZoomIn = useCallback(() => {
-    fgRef.current?.zoom(1.5, 400);
+    if (fgRef.current) {
+      const currentZoom = fgRef.current.zoom();
+      fgRef.current.zoom(currentZoom * 1.5, 400);
+    }
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    fgRef.current?.zoom(0.67, 400);
+    if (fgRef.current) {
+      const currentZoom = fgRef.current.zoom();
+      fgRef.current.zoom(currentZoom * 0.67, 400);
+    }
   }, []);
 
   const handleCenter = useCallback(() => {
@@ -258,11 +264,14 @@ const NetworkGraph = () => {
 
       {/* Hover Info */}
       {hoveredNode && (
-        <div className="absolute top-3 left-3 px-3 py-2 rounded-md bg-card border border-border text-xs">
+        <div className="absolute top-3 left-3 px-3 py-2 rounded-md bg-card border border-border text-xs shadow-lg z-50 pointer-events-none">
           <p className="font-medium text-foreground">{hoveredNode.name}</p>
-          <p className="text-muted-foreground font-mono uppercase">
-            {hoveredNode.type} · {t("cluster") as string} {hoveredNode.cluster}
-          </p>
+          <div className="text-muted-foreground font-mono space-y-0.5 mt-1">
+            <p className="uppercase">{hoveredNode.type}</p>
+            {hoveredNode.orgNumber && <p>Org: {hoveredNode.orgNumber}</p>}
+            {hoveredNode.sector && <p>Sector: {hoveredNode.sector}</p>}
+            {hoveredNode.country && <p>Country: {hoveredNode.country}</p>}
+          </div>
         </div>
       )}
     </div>
