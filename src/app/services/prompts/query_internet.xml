@@ -40,6 +40,9 @@
         <field name="customers" priority="low">
             Major customers or clients from case studies, press releases, or news articles (if publicly disclosed)
         </field>
+        <field name="organization_id" priority="high">
+            Swedish organization number (Organisationsnummer) is a unique identifier assigned to companies and organizations in Sweden. It is used for official registration and identification purposes. The format is a 10-digit number, typically written as YYYYMMDD-XXXX for individuals or XXXXXX-XXXX for organizations.
+        </field>
     </target_fields>
 
     <query_generation_guidelines>
