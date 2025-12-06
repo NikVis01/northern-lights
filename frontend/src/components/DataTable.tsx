@@ -41,6 +41,7 @@ interface Entity {
   cluster: number;
   ownership?: string;
   country: string;
+  website?: string;
 }
 
 
@@ -90,7 +91,8 @@ const DataTable = () => {
               sector: node.sector && node.sector !== "Unknown" ? node.sector : "—",
               cluster: node.cluster || 0,
               country: node.country || "Unknown",
-              ownership: ownership || undefined
+              ownership: ownership || undefined,
+              website: node.website || undefined
             };
           });
           setEntities(processedEntities);
@@ -402,15 +404,23 @@ const DataTable = () => {
                 <TableCell>
                   <Badge variant="outline" className="text-xs font-mono">{entity.country}</Badge>
                 </TableCell>
-                <TableCell>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </Button>
+                <TableCell 
+                  className="p-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {entity.website ? (
+                    <button
+                      onClick={() => window.open(entity.website, '_blank')}
+                      className="w-full h-full px-4 py-2 flex items-center justify-center opacity-100 transition-opacity hover:text-blue-500 hover:bg-secondary/50 rounded"
+                      title={`Visit ${entity.website}`}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <div className="w-full h-full px-4 py-2 flex items-center justify-center text-muted-foreground opacity-30">
+                    NA
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

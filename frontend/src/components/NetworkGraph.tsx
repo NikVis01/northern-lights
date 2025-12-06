@@ -34,7 +34,7 @@ interface GraphData {
 
 
 
-const NetworkGraph = () => {
+const NetworkGraph = ({ isPanelsOpen = true }: { isPanelsOpen?: boolean }) => {
   const fgRef = useRef<ForceGraphMethods>();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
@@ -146,11 +146,14 @@ const NetworkGraph = () => {
     if (selectedEntityId && fgRef.current) {
       const node = graphData.nodes.find(n => n.id === selectedEntityId);
       if (node && typeof node.x === "number" && typeof node.y === "number") {
-        fgRef.current.centerAt(node.x, node.y, 800);
+        // If panels are open, offset Y position so node appears in top 25% of screen
+        // Otherwise, center it normally (will be on full-height graph)
+        const targetY = isPanelsOpen ? node.y - (dimensions.height * -0.10) : node.y;
+        fgRef.current.centerAt(node.x, targetY, 800);
         fgRef.current.zoom(2.5, 800);
       }
     }
-  }, [selectedEntityId, graphData]);
+  }, [selectedEntityId, graphData, isPanelsOpen, dimensions]);
 
   const handleZoomIn = useCallback(() => {
     if (fgRef.current) {
