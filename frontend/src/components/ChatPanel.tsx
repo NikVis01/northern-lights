@@ -6,6 +6,7 @@ import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { getBackendUrl } from "@/lib/api";
 
 interface Message {
   id: string;
@@ -93,7 +94,7 @@ const ChatPanel = () => {
     setHasError(false);
 
     try {
-      const response = await fetch("/v1/chat", {
+      const response = await fetch(getBackendUrl("/api/v1/chat"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

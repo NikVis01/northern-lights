@@ -6,6 +6,7 @@ import { useTheme } from "./ThemeProvider";
 import { useSelectedEntity } from "@/contexts/SelectedEntityContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { getBackendUrl } from "@/lib/api";
 
 interface Node {
   id: string;
@@ -56,7 +57,7 @@ const NetworkGraph = () => {
       try {
         setHasError(false);
         // Use proxy URL to avoid CORS
-        const response = await fetch("/api/v1/search/all", {
+        const response = await fetch(getBackendUrl("/api/v1/search/all"), {
           headers: {
             "access_token": "dev" // Using dev token for now as per plan
           }
@@ -86,7 +87,7 @@ const NetworkGraph = () => {
       const fetchGraphData = async () => {
         try {
           setHasError(false);
-          const response = await fetch("/api/v1/search/all", {
+          const response = await fetch(getBackendUrl("/api/v1/search/all"), {
             headers: {
               "access_token": "dev"
             }

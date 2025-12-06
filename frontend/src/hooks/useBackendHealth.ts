@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getBackendUrl } from "@/lib/api";
 
 export const useBackendHealth = () => {
   const [isHealthy, setIsHealthy] = useState<boolean>(true);
@@ -8,7 +9,7 @@ export const useBackendHealth = () => {
   const checkHealth = async () => {
     try {
       setIsChecking(true);
-      const response = await fetch("/api/health", {
+      const response = await fetch(getBackendUrl("/api/health"), {
         method: "GET",
         signal: AbortSignal.timeout(5000), // 5 second timeout
       });

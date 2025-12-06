@@ -54,17 +54,17 @@ app.add_middleware(
 )
 
 try:
-    app.include_router(companies.router, prefix=f"/{settings.api_version}/companies", tags=["companies"])
-    app.include_router(investors.router, prefix=f"/{settings.api_version}/investors", tags=["investors"])
-    app.include_router(relationships.router, prefix=f"/{settings.api_version}/relationships", tags=["relationships"])
-    app.include_router(search.router, prefix=f"/{settings.api_version}/search", tags=["search"])
-    app.include_router(chat.router, prefix=f"/{settings.api_version}/chat", tags=["chat"])
+    app.include_router(companies.router, prefix=f"/api/{settings.api_version}/companies", tags=["companies"])
+    app.include_router(investors.router, prefix=f"/api/{settings.api_version}/investors", tags=["investors"])
+    app.include_router(relationships.router, prefix=f"/api/{settings.api_version}/relationships", tags=["relationships"])
+    app.include_router(search.router, prefix=f"/api/{settings.api_version}/search", tags=["search"])
+    app.include_router(chat.router, prefix=f"/api/{settings.api_version}/chat", tags=["chat"])
     logger.info("All routers registered successfully")
 except Exception as e:
     logger.error(f"Failed to register routers: {e}", exc_info=True)
     raise
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"status": "ok", "version": settings.api_version, "cors": "enabled"}

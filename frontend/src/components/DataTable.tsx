@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "./ui/tooltip";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { getBackendUrl } from "@/lib/api";
 
 type EntityType = "company" | "fund";
 type FilterType = "all" | "companies" | "investors";
@@ -62,7 +63,7 @@ const DataTable = () => {
     const fetchEntities = async () => {
       try {
         setHasError(false);
-        const response = await fetch("/api/v1/search/all", {
+        const response = await fetch(getBackendUrl("/api/v1/search/all"), {
           headers: {
             "access_token": "dev"
           }
@@ -112,7 +113,7 @@ const DataTable = () => {
       const fetchEntities = async () => {
         try {
           setHasError(false);
-          const response = await fetch("/api/v1/search/all", {
+          const response = await fetch(getBackendUrl("/api/v1/search/all"), {
             headers: {
               "access_token": "dev"
             }
