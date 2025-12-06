@@ -45,12 +45,29 @@ app = FastAPI(
 )
 
 # CORS Middleware - Must be added before routes
+# Note: allow_credentials=True with allow_origins=["*"] doesn't work.
+# We need to list specific origins or use allow_credentials=False
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
-    allow_credentials=True,
+    allow_origins=[
+        # Development
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+        # Production - Vercel domains
+        "https://northern-lights-2uld.vercel.app",
+        "https://*.vercel.app",  # Wildcard for preview deployments
+        # Production - GCP backend (self-reference for internal calls)
+        "https://northern-lights-412412805222.europe-north2.run.app",
+    ],
+    allow_credentials=False,  # Set to False since we're allowing multiple origins
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 try:

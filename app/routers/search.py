@@ -67,48 +67,70 @@ async def unified_search(body: UnifiedSearchQuery, api_key: ApiKeyDep):
 @router.get("/all")
 async def get_all_entities(api_key: ApiKeyDep):
     """Get all companies and investors for the frontend graph functionality."""
-    # 1. Fetch nodes
-    companies = investor_queries.get_all_companies()
-    investors = investor_queries.get_all_investors()
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # 1. Fetch nodes
+        companies = investor_queries.get_all_companies()
+        investors = investor_queries.get_all_investors()
 
-    nodes = []
+        nodes = []
 
-    # Process companies
-    for c in companies:
-        nodes.append(
-            {
-                "id": c["company_id"],
-                "name": c.get("name", "Unknown Company"),
-                "type": "company",
-                "orgNumber": c.get("company_id", ""),
-                "sector": c.get("sectors", ["Unknown"])[0] if c.get("sectors") else "Unknown",
-                "country": c.get("country_code", "SE"),
-                "cluster": 1,  # Placeholder
-                # Default value or calculate based on relationships/page rank later
-                "val": 10,
-            }
-        )
+        # Process companies
+        for c in companies:
+            try:
+                nodes.append(
+                    {
+                        "id": c["company_id"],
+                        "name": c.get("name", "Unknown Company"),
+                        "type": "company",
+                        "orgNumber": c.get("company_id", ""),
+                        "sector": c.get("sectors", ["Unknown"])[0] if c.get("sectors") else "Unknown",
+                        "country": c.get("country_code", "SE"),
+                        "cluster": 1,  # Placeholder
+                        # Default value or calculate based on relationships/page rank later
+                        "val": 10,
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error processing company {c}: {e}")
+                continue
 
-    # Process investors
-    for inv in investors:
-        nodes.append(
-            {
-                "id": inv["company_id"],
-                "name": inv.get("name", "Unknown Investor"),
-                "type": "fund",
-                "orgNumber": inv.get("company_id", ""),
-                "sector": inv.get("sectors", ["Unknown"])[0] if inv.get("sectors") else "Unknown",
-                "country": inv.get("country_code", "SE"),
-                "cluster": 1,  # Placeholder
-                "val": 15,
-            }
-        )
+        # Process investors
+        for inv in investors:
+            try:
+                nodes.append(
+                    {
+                        "id": inv["company_id"],
+                        "name": inv.get("name", "Unknown Investor"),
+                        "type": "fund",
+                        "orgNumber": inv.get("company_id", ""),
+                        "sector": inv.get("sectors", ["Unknown"])[0] if inv.get("sectors") else "Unknown",
+                        "country": inv.get("country_code", "SE"),
+                        "cluster": 1,  # Placeholder
+                        "val": 15,
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error processing investor {inv}: {e}")
+                continue
 
-    # 2. Fetch edges
-    rels = relationship_queries.get_all_relationships()
+        # 2. Fetch edges
+        rels = relationship_queries.get_all_relationships()
 
-    links = []
-    for r in rels:
-        links.append({"source": r["source"], "target": r["target"], "ownership": r["ownership"]})
+        links = []
+        for r in rels:
+            try:
+                links.append({"source": r["source"], "target": r["target"], "ownership": r["ownership"]})
+            except Exception as e:
+                logger.error(f"Error processing relationship {r}: {e}")
+                continue
 
-    return {"nodes": nodes, "links": links}
+        logger.info(f"Returning {len(nodes)} nodes and {len(links)} links")
+        return {"nodes": nodes, "links": links}
+    
+    except Exception as e:
+        logger.error(f"Error in get_all_entities: {e}", exc_info=True)
+        # Re-raise the exception to return proper HTTP error response
+        raise
